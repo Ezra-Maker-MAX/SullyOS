@@ -12,6 +12,7 @@ import { getMcdToken, setMcdToken as saveMcdToken, isMcdEnabled, setMcdEnabled a
 import { Sun, Newspaper, NotePencil, Notebook, Book, ForkKnife } from '@phosphor-icons/react';
 import { loadPushConfig, savePushConfig, registerScheduleOnWorker, startHeartbeat, stopHeartbeat, isPushConfigAvailable, ensureSubscribed, sendTestPush, getPushDiagnostics, resetSubscription, type PushDiagnostics } from '../utils/proactivePushConfig';
 import { ProactiveChat } from '../utils/proactiveChat';
+import { InstantPushSettingsModal } from '../components/settings/InstantPushSettingsModal';
 
 const DiagRow: React.FC<{ label: string; value: string; bad?: boolean }> = ({ label, value, bad }) => (
     <div className="flex items-start justify-between gap-3">
@@ -119,6 +120,7 @@ const Settings: React.FC = () => {
   const [ppDiag, setPpDiag] = useState<PushDiagnostics | null>(null);
   const [ppTestBusy, setPpTestBusy] = useState(false);
   const [ppResetBusy, setPpResetBusy] = useState(false);
+  const [showInstantModal, setShowInstantModal] = useState(false);
 
   // 模型选择 Modal 的过滤 + 公共前缀（memo 掉，避免每次 Settings 重渲染都重算）
   const modelPickerView = useMemo(() => {
@@ -1385,6 +1387,29 @@ const Settings: React.FC = () => {
         </section>
         )}
 
+        {/* ───────── Instant Push ───────── */}
+        <section className="bg-white/80 rounded-3xl p-5 shadow-sm border border-white/50">
+            <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                    <div className="p-2 bg-indigo-100/60 rounded-xl text-indigo-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9.348 14.651a3.75 3.75 0 0 1 0-5.303m5.304 0a3.75 3.75 0 0 1 0 5.303m-7.425 2.122a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.808-3.808-9.98 0-13.789m13.788 0c3.808 3.808 3.808 9.981 0 13.789M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                        </svg>
+                    </div>
+                    <h2 className="text-sm font-semibold text-slate-600 tracking-wider">Instant Push</h2>
+                </div>
+                <button
+                    onClick={() => setShowInstantModal(true)}
+                    className="text-[10px] bg-indigo-100 text-indigo-600 px-3 py-1.5 rounded-full font-bold shadow-sm active:scale-95 transition-transform"
+                >
+                    配置
+                </button>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">
+                与上方 Push 加速器不同：前端发 prompt 到你自部署的 Worker，Worker 调你自己的 LLM 生成回复后分句逐条 Web Push。零数据库、零 cron。
+            </p>
+        </section>
+
         <div className="text-center text-[10px] text-slate-300 pb-8 font-mono tracking-widest uppercase">
             v2.2 (Realtime Awareness)
         </div>
@@ -2019,6 +2044,8 @@ const Settings: React.FC = () => {
               </p>
           </div>
       </Modal>
+
+      <InstantPushSettingsModal open={showInstantModal} onClose={() => setShowInstantModal(false)} />
 
     </div>
   );

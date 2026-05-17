@@ -152,6 +152,14 @@ export interface APIConfig {
   temperature?: number;
 }
 
+export interface InstantPushConfig {
+  enabled: boolean;
+  workerUrl: string;        // https://your-instant.workers.dev
+  vapidPublicKey: string;   // base64url
+  clientToken?: string;     // 对应 Worker 的 AMSG_CLIENT_TOKEN
+  updatedAt?: number;
+}
+
 export type ActiveMsg2DbDriver = 'pg' | 'neon';
 export type ActiveMsg2Mode = 'fixed' | 'auto' | 'prompted';
 export type ActiveMsg2Recurrence = 'none' | 'daily' | 'weekly';
@@ -1551,7 +1559,6 @@ export interface FullBackupData {
     availableModels?: string[];
     realtimeConfig?: RealtimeConfig;  // 实时感知配置（天气/新闻/Notion）
     customIcons?: Record<string, string>;
-    customIcons?: Record<string, string>;
     appearancePresets?: AppearancePreset[];
     characters?: CharacterProfile[];
     groups?: GroupProfile[]; 
@@ -1886,7 +1893,6 @@ export interface SimAction {
     reactionToUser?: string;  // 角色对玩家操作的评价
     narrative?: CharNarrative; // 角色叙事层（LLM回合使用）
     chainFromId?: string;     // 由哪个事件链引发
-    chainFromId?: string;
     storyKind?: SimStoryKind;
     headline?: string;
     involvedNpcIds?: string[];
