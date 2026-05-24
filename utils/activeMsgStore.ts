@@ -283,20 +283,7 @@ export const ActiveMsgStore = {
       request.onsuccess = () => {
         const r = request.result as InstantPushReasoningBufferEntry | undefined;
         if (r) {
-          // 0.8.0-next.2 起 SW 用 chunks[] 累积. 老格式 (顶层 reasoningContent, 无 chunks)
-          // 走 fallback 路径, 让 Round 1 buffered 数据也能消费.
-          const chunks = r.chunks ?? [];
-          const joined = chunks.length > 0
-            ? [...chunks]
-                .sort((a, b) =>
-                  a.messageIndex !== b.messageIndex
-                    ? a.messageIndex - b.messageIndex
-                    : a.chunkIndex - b.chunkIndex,
-                )
-                .map((c) => c.reasoningContent)
-                .join('')
-            : (r.reasoningContent ?? '');
-          entry = { ...r, reasoningContent: joined };
+          entry = { ...r };
           store.delete(sessionId);
         }
       };

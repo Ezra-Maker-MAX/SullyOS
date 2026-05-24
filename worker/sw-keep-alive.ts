@@ -32,10 +32,11 @@ import { installReiSW } from '@rei-standard/amsg-sw';
  *           之前只有 tool_request 弹通知, content (含写日记的 directive 回复) 关浏览器 /
  *           后台冻结时零通知 — 用户不知道要回前台, inbox 不 flush, 客户端副作用 (写 Notion)
  *           永远不跑. 与 tool_request 同策略: 有可见 client 交给 in-app UI, 否则系统通知.
- *  - 1.8.0: 新增 emotion_update push 分轨 (saveEmotionUpdateToInbox). worker 端跑完副 API 情绪
- *           评估后把 buff 结果推回, 静默写 inbox (不弹通知/不计未读), 客户端 flush 时落 buff.
+ *  - 1.9.0: 升级 amsg-sw 2.1.0-next.2，由插件接管 _multipart 透明重组。
+ *           删除了应用层的 reasoning chunking 逻辑，现收到完整 reasoningContent。
+ *           修复了在应用关闭期间收到分片推送丢失的问题（通过 notificationclick 恢复及前台拦截 REI_AMSG_PUSH）。
  */
-const SW_VERSION = '1.8.1';
+const SW_VERSION = '1.9.0';
 
 const PING_INTERVAL = 15_000;
 const MAX_MANUAL_ALIVE_MS = 5 * 60_000;
@@ -62,6 +63,10 @@ const sw = self as unknown as ServiceWorkerGlobalScope;
 installReiSW(sw, {
   defaultIcon: './icons/icon-192.png',
   defaultBadge: './icons/icon-192.png',
+  multipart: { enabled: true },
+  onBusinessPayload: async (payload) => {
+    await saveIncomingActiveMessage(payload);
+  },
 });
 
 function hasActiveProactiveSchedules() {
@@ -273,43 +278,20 @@ async function saveReasoningToBuffer(payload: any) {
   const reasoningContent: string = String(payload?.reasoningContent ?? '');
   if (!sessionId || !charId || !reasoningContent) return;
 
-  // 0.8.0-next.2 ReasoningPush 自带 (messageIndex, totalMessages, chunkIndex, totalChunks);
-  // 老 worker 没这些字段, 兜底 (1, 1) 让单 chunk 也能走累积路径而不需要双分支.
-  // 如果老 worker 罕见地多次推同 sessionId, 多条 chunks 都落在 key=(1,1) — claimReasoning
-  // 排序时 V8/Safari/Firefox 的 Array#sort 是 stable 的, 保留 push 顺序 = 到达顺序.
-  const messageIndex = Number.isFinite(payload?.messageIndex) ? Number(payload.messageIndex) : 1;
-  const chunkIndex = Number.isFinite(payload?.chunkIndex) ? Number(payload.chunkIndex) : 1;
-
-  // read-modify-write: 取出已有 chunks → push 新条目 → put 回去. 单事务保证原子.
   const db = await openInboxDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(ACTIVE_MSG_REASONING_BUFFER_STORE, 'readwrite');
     const store = tx.objectStore(ACTIVE_MSG_REASONING_BUFFER_STORE);
-    const getReq = store.get(sessionId);
-    getReq.onsuccess = () => {
-      const existing = getReq.result as
-        | { sessionId: string; charId: string; reasoningContent?: string; chunks?: Array<{ messageIndex: number; chunkIndex: number; reasoningContent: string }>; receivedAt: number }
-        | undefined;
-      // 升级路径兼容: 老 SW (≤1.5.2) 写的是扁平 reasoningContent 字段, 新 SW 第一次
-      // 遇到同 sessionId 时把它转成一条 chunks 条目 (用最小 index 排在最前), 避免静默丢.
-      const seed = (!existing?.chunks && existing?.reasoningContent)
-        ? [{ messageIndex: 0, chunkIndex: 0, reasoningContent: existing.reasoningContent }]
-        : (existing?.chunks ?? []);
-      const chunks = [...seed];
-      chunks.push({ messageIndex, chunkIndex, reasoningContent });
-      store.put({
-        sessionId,
-        charId,
-        chunks,
-        receivedAt: Date.now(),
-      });
-    };
-    getReq.onerror = () => reject(getReq.error);
+    store.put({
+      sessionId,
+      charId,
+      reasoningContent,
+      receivedAt: Date.now(),
+    });
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(tx.error || new Error('reasoning buffer write aborted'));
   });
-  // reasoning push 不通知客户端 — 主线程在处理同 sessionId 的 content 时会主动 claim.
 }
 
 /**
@@ -531,12 +513,8 @@ async function saveIncomingActiveMessage(payload: any) {
   }
 }
 
-sw.addEventListener('push', (event: PushEvent) => {
-  const payload = readPushPayload(event);
-  if (!payload) return;
-
-  event.waitUntil(saveIncomingActiveMessage(payload));
-});
+// 之前我们自己写 sw.addEventListener('push')，现在全量交由 amsg-sw 的 installReiSW 
+// 在 onBusinessPayload 里回调，所以这里不再需要手写 push 监听。
 
 sw.addEventListener('notificationclick', (event: NotificationEvent) => {
   const payload = event.notification.data?.payload || event.notification.data || {};

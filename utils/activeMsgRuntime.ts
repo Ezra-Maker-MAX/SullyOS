@@ -457,6 +457,19 @@ export const ActiveMsgRuntime = {
           return;
         }
 
+        if (type === 'REI_AMSG_PUSH') {
+          const subEvent = event.data?.event;
+          const payload = event.data?.payload;
+
+          if (subEvent === 'rei-amsg-multipart-expired') {
+            console.warn('[amsg] multipart expired', payload);
+            window.dispatchEvent(new CustomEvent('active-msg-error', {
+              detail: { message: '消息接收不完整，部分内容可能丢失' }
+            }));
+          }
+          return;
+        }
+
         // Phase 2 Round 2: SW 收到 tool_request push 且当前 window visible → 立即跑 runner.
         // 不 visible 时 SW 发的是 showNotification, 用户点击后落到 active-msg-open 分支,
         // ActiveMsgRuntime.init 时这里的启动消费会兜底 (runPendingToolCallsSafely).
