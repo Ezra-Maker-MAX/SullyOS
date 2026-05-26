@@ -41,6 +41,7 @@ import HotNewsApp from '../apps/HotNewsApp';
 import { SpecialMomentsApp } from './ValentineEvent';
 import { Like520Controller, shouldShowLike520Popup } from './Like520Event';
 import { UpdateNotificationController, shouldShowUpdateNotification } from './UpdateNotificationEvent';
+import { WorkerUpdateReminderController, shouldShowWorkerUpdateReminder } from './WorkerUpdateReminderEvent';
 import { AppID } from '../types';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar as CapStatusBar, Style as StatusBarStyle } from '@capacitor/status-bar';
@@ -250,6 +251,14 @@ const PhoneShell: React.FC = () => {
     if (!isDataLoaded) return;
     if (shouldShowLike520Popup()) setShowLike520Popup(true);
   }, [showDisclaimer, showUpdateNotification, isDataLoaded]);
+
+  // Worker 后端更新提醒 — 只对启用了 Instant Push 的用户弹，且当前 worker 版本未确认过
+  const [showWorkerUpdateReminder, setShowWorkerUpdateReminder] = useState(false);
+  useEffect(() => {
+    if (showDisclaimer || showUpdateNotification || showLike520Popup) return;
+    if (!isDataLoaded) return;
+    if (shouldShowWorkerUpdateReminder()) setShowWorkerUpdateReminder(true);
+  }, [showDisclaimer, showUpdateNotification, showLike520Popup, isDataLoaded]);
 
   // Capacitor Native Handling
   useEffect(() => {
@@ -513,6 +522,13 @@ const PhoneShell: React.FC = () => {
        {!showDisclaimer && !showUpdateNotification && showLike520Popup && (
          <Like520Controller
            onClose={() => setShowLike520Popup(false)}
+         />
+       )}
+
+       {/* Worker 后端更新提醒（仅启用 Instant Push 的用户，每个 worker 版本一次） */}
+       {!showDisclaimer && !showUpdateNotification && !showLike520Popup && showWorkerUpdateReminder && (
+         <WorkerUpdateReminderController
+           onClose={() => setShowWorkerUpdateReminder(false)}
          />
        )}
     </div>

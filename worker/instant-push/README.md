@@ -40,7 +40,18 @@
    （URL 末尾的 `worker/instant-push` 子目录路径必须保留，CF 才知道用哪一份 wrangler.toml）
 4. CF 会自动 `npm install` + `wrangler deploy`，部署成功后记录 Worker 地址：
    `https://instant-push.<你的账号>.workers.dev`
-5. 之后只要上游仓库 push 新版，CF Workers Builds 会自动重新部署，**不用再手动同步**
+5. ~~之后只要上游仓库 push 新版，CF Workers Builds 会自动重新部署，**不用再手动同步**~~
+
+> 🚧 **【存疑 · 待核实，2026-05-26】** 上面第 5 条原先承诺「上游更新会自动同步」，
+> 目前看来**很可能不成立**，先标注出来、不急着拍板：
+> CF 的「Clone a public repository via Git URL」实测更像是**把公开仓库一次性导入到你自己的
+> GitHub 账号下、生成一份独立副本**，之后 Workers Builds 监听的是**你那份副本**，而不是上游
+> `qegj567-cloud/SullyOS`。果真如此的话，我们这边更新了 worker，你那份副本不会自动跟上，
+> 需要你手动同步（或重新克隆）才能拿到最新代码。
+>
+> 我们正在确认 CF 的确切行为，并准备一份**图文部署教程**替代旧视频。在结论出来前，
+> 想吃到最新 worker 代码，最稳的是用下面的「备用方案」重贴一次 `worker.bundle.js`。
+> 另外，后端更新时我们会在 App 内**弹窗提醒**已启用 Instant Push 的用户来更新。
 
 ### 备用方案：复制 `worker.bundle.js`
 
@@ -52,7 +63,8 @@ CF 后台连不上 GitHub、或者你 fork 了私有副本不想接 OAuth 时用
 4. 点 **Deploy** 完成部署
 5. 同样记录 Worker 地址
 
-> ⚠️ 备用方案部署的是 commit 时的 bundle 快照，要拿最新代码就得重新粘贴一次。主方案才会自动跟最新。
+> ⚠️ 备用方案部署的是 commit 时的 bundle 快照，要拿最新代码就得重新粘贴一次。
+> （主方案是否真能「自动跟最新」见上面阶段 2 第 5 条的存疑说明，结论未定前别太当真。）
 
 ---
 
