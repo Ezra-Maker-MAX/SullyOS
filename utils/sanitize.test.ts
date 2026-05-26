@@ -294,6 +294,31 @@ describe('sanitizeIntoSegments', () => {
     ]);
   });
 
+  it('[html] 多行 HTML → 整块单 segment, 不被 chunkText 按 \\n 切碎', () => {
+    // Regression: 在没有 Phase 1.5 保护时, chunkText 会把多行 HTML 按 \n 拆成
+    // 多个 segment, 每个 segment 都是 HTML 碎片, 客户端 extractHtmlBlocks 匹配不
+    // 到完整 [html]...[/html] 对儿, 渲染成一条条裸标签气泡.
+    const input = '前\n[html]<div>\n  hello\n  <span>world</span>\n</div>[/html]\n后';
+    const segs = sanitizeIntoSegments(input);
+    expect(segs).toEqual([
+      { raw: '前', sanitized: '前' },
+      {
+        raw: '[html]<div>\n  hello\n  <span>world</span>\n</div>[/html]',
+        sanitized: '[HTML 卡片]',
+      },
+      { raw: '后', sanitized: '后' },
+    ]);
+  });
+
+  it('[html] 连续两个多行块 → 各自独立成 segment, 内容不交叉', () => {
+    const input = '[html]<div>\nA\n</div>[/html]\n[html]<div>\nB\n</div>[/html]';
+    const segs = sanitizeIntoSegments(input);
+    expect(segs).toEqual([
+      { raw: '[html]<div>\nA\n</div>[/html]', sanitized: '[HTML 卡片]' },
+      { raw: '[html]<div>\nB\n</div>[/html]', sanitized: '[HTML 卡片]' },
+    ]);
+  });
+
   it('<翻译> 块 → 取原文当一段, 译文剥光', () => {
     const segs = sanitizeIntoSegments('<翻译><原文>Hi</原文><译文>嗨</译文></翻译>');
     expect(segs).toHaveLength(1);

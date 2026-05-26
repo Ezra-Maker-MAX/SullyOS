@@ -270,13 +270,33 @@ export function sanitizeIntoSegments(text: string): Segment[] {
   cleaned = stripLegacyTrans(cleaned);
   cleaned = stripMarkdownDividers(cleaned);
 
+  // Phase 1.5: 把 [html]...[/html] 整块抽出来用占位符替换, 防止 chunkText 按 \n
+  // 把多行 HTML 切成碎片 (碎片到客户端后 extractHtmlBlocks 匹配不到完整对儿,
+  // 退化成一条条裸标签气泡, 就是用户看到的"很恐怖 没形成格式"现象).
+  // 占位符两侧加 \n 让 chunkText 把它独立成 chunk; 还原时整块作为单 segment 推送.
+  const htmlBlocks: string[] = [];
+  cleaned = cleaned.replace(/\[html\][\s\S]*?\[\/html\]/gi, (m) => {
+    const idx = htmlBlocks.length;
+    htmlBlocks.push(m);
+    return `\nHTML${idx}\n`;
+  });
+
   // Phase 2: chunk 跟客户端 chatParser.chunkText 同算法 (内联避免 import chatParser
   // 把 DB / React / Capacitor 依赖拖进 worker bundle)
   const rawChunks = chunkText(cleaned);
 
   // Phase 3: 拆 SEND_EMOJI + banner-only 替换
+  const HTML_PLACEHOLDER_RE = /HTML(\d+)/;
   const segments: Segment[] = [];
   for (const rawChunk of rawChunks) {
+    const htmlMatch = rawChunk.match(HTML_PLACEHOLDER_RE);
+    if (htmlMatch && htmlMatch[0] === rawChunk.trim()) {
+      const html = htmlBlocks[Number(htmlMatch[1])];
+      if (html) {
+        segments.push({ raw: html, sanitized: '[HTML 卡片]' });
+      }
+      continue;
+    }
     const parts = splitOnSendEmoji(rawChunk);
     for (const part of parts) {
       if (part.kind === 'emoji') {
@@ -286,7 +306,12 @@ export function sanitizeIntoSegments(text: string): Segment[] {
         });
         continue;
       }
-      const rawText = part.text.trim();
+      let rawText = part.text;
+      // 安全网: 占位符跟正文同行 (chunkText 没拆开) 时, 把 HTML 块还原回 raw,
+      // sanitized 走 sanitizeTextForBanner 的 replaceHtmlBlocks → [HTML 卡片].
+      // 这条 chunk 还是一条整 segment, 没碎.
+      rawText = rawText.replace(/HTML(\d+)/g, (_m, n) => htmlBlocks[Number(n)] || '');
+      rawText = rawText.trim();
       if (!rawText) continue;
       const sanitized = sanitizeTextForBanner(rawText).trim();
       if (!sanitized) continue;
