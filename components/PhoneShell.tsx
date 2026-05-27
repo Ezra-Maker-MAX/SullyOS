@@ -251,18 +251,20 @@ const ImportRecoveryPopup: React.FC<{
   onLater: () => void;
   onReimport: () => void;
 }> = ({ marker, onLater, onReimport }) => {
-  const phaseLabel = getImportPhaseLabel(marker?.phase);
-  const startedAt = marker?.startedAt
+  if (!marker) return null;
+
+  const phaseLabel = getImportPhaseLabel(marker.phase);
+  const startedAt = marker.startedAt
     ? new Date(marker.startedAt).toLocaleString('zh-CN')
     : '';
-  const updatedAt = marker?.updatedAt
+  const updatedAt = marker.updatedAt
     ? new Date(marker.updatedAt).toLocaleString('zh-CN')
     : '';
-  const sourceSize = formatBytes(marker?.sourceSize);
-  const currentFileSize = formatBytes(marker?.currentFileSize);
-  const hasAssetProgress = typeof marker?.assetTotal === 'number' && marker.assetTotal > 0;
-  const hasItemProgress = typeof marker?.itemTotal === 'number' && marker.itemTotal > 0;
-  const hasError = !!marker?.error;
+  const sourceSize = formatBytes(marker.sourceSize);
+  const currentFileSize = formatBytes(marker.currentFileSize);
+  const hasAssetProgress = typeof marker.assetTotal === 'number' && marker.assetTotal > 0;
+  const hasItemProgress = typeof marker.itemTotal === 'number' && marker.itemTotal > 0;
+  const hasError = !!marker.error;
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-5 animate-fade-in">
@@ -281,20 +283,20 @@ const ImportRecoveryPopup: React.FC<{
           </p>
           {hasError && (
             <div className="bg-red-50 border border-red-200 rounded-2xl p-3 text-[12px] text-red-700 leading-relaxed whitespace-pre-wrap break-words select-text">
-              {marker?.error}
+              {marker.error}
             </div>
           )}
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-[12px] text-amber-700 leading-relaxed">
             <div>中断阶段：{phaseLabel}</div>
-            {marker?.current && <div>当前部分：{marker.current}</div>}
-            {hasItemProgress && <div>条目进度：{marker?.itemDone || 0}/{marker?.itemTotal}</div>}
-            {hasAssetProgress && <div>素材进度：{marker?.assetDone || 0}/{marker?.assetTotal}</div>}
-            {marker?.currentFile && (
+            {marker.current && <div>当前部分：{marker.current}</div>}
+            {hasItemProgress && <div>条目进度：{marker.itemDone || 0}/{marker.itemTotal}</div>}
+            {hasAssetProgress && <div>素材进度：{marker.assetDone || 0}/{marker.assetTotal}</div>}
+            {marker.currentFile && (
               <div className="break-all">当前文件：{marker.currentFile}{currentFileSize ? ` · ${currentFileSize}` : ''}</div>
             )}
             {startedAt && <div>开始时间：{startedAt}</div>}
             {updatedAt && <div>最后进度：{updatedAt}</div>}
-            {marker?.source && <div className="break-all">备份文件：{marker.source}{sourceSize ? ` · ${sourceSize}` : ''}</div>}
+            {marker.source && <div className="break-all">备份文件：{marker.source}{sourceSize ? ` · ${sourceSize}` : ''}</div>}
           </div>
         </div>
 
