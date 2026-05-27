@@ -3068,11 +3068,11 @@ async function cleanupExpiredD1Blobs(env) {
   if (!shouldUseD1BlobStore(env) || !env.DB) return;
   if (d1CleanupPromise) return d1CleanupPromise;
   d1CleanupPromise = (async () => {
+    const ready = await ensureD1BlobSchema(env);
+    if (!ready) return;
     await env.DB.prepare(D1_DELETE_EXPIRED_SQL).bind(Date.now()).run();
   })().catch((e) => {
-    if (!String(e).includes("no such table")) {
-      console.error("[instant-push] blob sweeper failed", e);
-    }
+    console.error("[instant-push] blob sweeper failed", e);
   }).finally(() => {
     d1CleanupPromise = null;
   });
@@ -3243,14 +3243,14 @@ var src_default = {
       body = null;
     }
     const requestedEnv = withRequestOversizeTransport(env, body);
-    ctx.waitUntil(ensureD1BlobSchema(requestedEnv));
-    scheduleD1BlobCleanup(requestedEnv, ctx);
+    const workerEnv = await prepareBlobStoreEnv(requestedEnv);
+    scheduleD1BlobCleanup(workerEnv, ctx);
     if (body?.emotionEval) {
       console.log("[TIMING] emotion: dispatched", (/* @__PURE__ */ new Date()).toISOString());
-      ctx.waitUntil(runEmotionEval(body, requestedEnv, request.url));
+      ctx.waitUntil(runEmotionEval(body, workerEnv, request.url));
     }
     console.log("[TIMING] reply: dispatched", (/* @__PURE__ */ new Date()).toISOString());
-    return await cfWorker.fetch(request, requestedEnv, ctx);
+    return await cfWorker.fetch(request, workerEnv, ctx);
   },
   async scheduled(_event, env) {
     const workerEnv = await prepareBlobStoreEnv(env);

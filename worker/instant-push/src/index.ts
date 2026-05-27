@@ -212,14 +212,15 @@ async function cleanupExpiredD1Blobs(env: Env): Promise<void> {
 
   if (d1CleanupPromise) return d1CleanupPromise;
   d1CleanupPromise = (async () => {
+    const ready = await ensureD1BlobSchema(env);
+    if (!ready) return;
+
     await env.DB!.prepare(D1_DELETE_EXPIRED_SQL)
       .bind(Date.now())
       .run();
   })()
     .catch((e) => {
-      if (!String(e).includes('no such table')) {
-        console.error('[instant-push] blob sweeper failed', e);
-      }
+      console.error('[instant-push] blob sweeper failed', e);
     })
     .finally(() => {
       d1CleanupPromise = null;
@@ -439,18 +440,18 @@ export default {
       body = null; // 非 JSON / 解析失败: 不影响主路径
     }
     const requestedEnv = withRequestOversizeTransport(env, body);
-    ctx.waitUntil(ensureD1BlobSchema(requestedEnv));
-    scheduleD1BlobCleanup(requestedEnv, ctx);
+    const workerEnv = await prepareBlobStoreEnv(requestedEnv);
+    scheduleD1BlobCleanup(workerEnv, ctx);
 
     // 情绪评估不依赖主回复内容 (用 body.messages = 与主回复同一批消息, 跟本地一样不含新回复),
     // 所以与主回复**并行**跑, 而不是 await cfWorker.fetch (流式输出 + 推送 + 收尾可能拖 ~30s)
     // 完成后才启动 —— 砍掉情绪评估的启动延迟, 让 buff / "情绪分析中" 徽章尽快结算.
     if (body?.emotionEval) {
       console.log('[TIMING] emotion: dispatched', new Date().toISOString());
-      ctx.waitUntil(runEmotionEval(body, requestedEnv, request.url));
+      ctx.waitUntil(runEmotionEval(body, workerEnv, request.url));
     }
     console.log('[TIMING] reply: dispatched', new Date().toISOString());
-    return await (cfWorker as any).fetch(request, requestedEnv, ctx);
+    return await (cfWorker as any).fetch(request, workerEnv, ctx);
   },
   async scheduled(_event: unknown, env: Env) {
     const workerEnv = await prepareBlobStoreEnv(env);
