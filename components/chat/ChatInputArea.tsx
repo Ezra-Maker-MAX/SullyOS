@@ -1,6 +1,5 @@
-
-import React, { useRef, useState } from 'react';
-import { ShareNetwork, Trash, Plus, Smiley, PaperPlaneTilt, Money, BookOpenText, GearSix, Image, Lock, ArrowsClockwise, ChatCircleDots, CalendarBlank, ForkKnife, Code, Brain } from '@phosphor-icons/react';
+import React, { useRef, useState, useEffect } from 'react';
+import { ShareNetwork, Trash, Plus, Smiley, PaperPlaneTilt, Money, BookOpenText, GearSix, Image, Lock, ArrowsClockwise, ChatCircleDots, CalendarBlank, ForkKnife, Code, Brain, PencilSimple } from '@phosphor-icons/react';
 import { CharacterProfile, ChatTheme, EmojiCategory, Emoji } from '../../types';
 import { PRESET_THEMES } from './ChatConstants';
 import { isIOSStandaloneWebApp } from '../../utils/iosStandalone';
@@ -68,6 +67,8 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     const chatImageInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [actionsPage, setActionsPage] = useState<0 | 1>(0);
+    const [emojiSelectionMode, setEmojiSelectionMode] = useState(false);
+    const [selectedEmojis, setSelectedEmojis] = useState<any[]>([]);
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const startPos = useRef({ x: 0, y: 0 });
     const isLongPressTriggered = useRef(false); // Track if long press action fired
@@ -119,7 +120,10 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
             isLongPressTriggered.current = true;
             // Trigger action
             if (type === 'emoji') {
-                onPanelAction('delete-emoji-req', item);
+                if (!emojiSelectionMode) {
+                    setEmojiSelectionMode(true);
+                    setSelectedEmojis([item]);
+                }
             } else {
                 onPanelAction('category-options', item);
             }
@@ -203,7 +207,15 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
         clearTimer();
 
         if (type === 'emoji') {
-            onPanelAction('send-emoji', item);
+            if (emojiSelectionMode) {
+                setSelectedEmojis(prev => {
+                    const exists = prev.find(e => e.url === item.url);
+                    if (exists) return prev.filter(e => e.url !== item.url);
+                    return [...prev, item];
+                });
+            } else {
+                onPanelAction('send-emoji', item);
+            }
         } else {
             onPanelAction('select-category', item.id);
         }
@@ -225,6 +237,25 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
             });
         });
     };
+
+    React.useEffect(() => {
+        if (showPanel !== 'emojis') {
+            setEmojiSelectionMode(false);
+            setSelectedEmojis([]);
+        }
+    }, [showPanel]);
+
+    React.useEffect(() => {
+        if (!emojiSelectionMode) {
+            setSelectedEmojis([]);
+        }
+    }, [emojiSelectionMode]);
+
+    React.useEffect(() => {
+        if (emojiSelectionMode) {
+            setSelectedEmojis(prev => prev.filter(se => emojis.some(e => e.url === se.url)));
+        }
+    }, [emojis]);
 
     const isDiscordStyle = inputStyle === 'discord';
     const isPixelStyle = inputStyle === 'pixel' || chromeStyle === 'pixel';
@@ -311,7 +342,13 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
           ? 'text-slate-400'
           : 'text-slate-400';
 
+    const selectedEmojiUrls = emojiSelectionMode ? new Set(selectedEmojis.map(se => se.url)) : new Set();
+
     return (
+        <>
+        {emojiSelectionMode && (
+            <div className={`fixed inset-0 z-[-1] ${isPixelStyle ? 'bg-[#eadfce]/70 backdrop-blur-[2px]' : isDiscordStyle ? 'bg-slate-950/70 backdrop-blur-[2px]' : 'bg-white/60 backdrop-blur-[2px]'}`} />
+        )}
         <div className={`${shellClass} pb-safe shrink-0 z-40 relative`}>
             
             {selectionMode ? (
@@ -335,7 +372,7 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                     </button>
                 </div>
             ) : (
-                <div className="p-3 px-4 flex gap-3 items-end">
+                <div className="p-3 px-4 flex gap-3 items-end relative">
                     <button onClick={() => setShowPanel(showPanel === 'actions' ? 'none' : 'actions')} className={actionButtonClass}>
                         <Plus className="w-6 h-6" weight="bold" />
                     </button>
@@ -366,6 +403,10 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                     >
                         {sendButtonStyle === 'pill' ? <span>发送</span> : <PaperPlaneTilt className="w-5 h-5" weight="fill" />}
                     </button>
+
+                    {emojiSelectionMode && (
+                        <div className={`absolute inset-0 z-10 ${isPixelStyle ? 'bg-[#eadfce]/70 backdrop-blur-[2px]' : isDiscordStyle ? 'bg-slate-950/70 backdrop-blur-[2px]' : 'bg-white/60 backdrop-blur-[2px]'}`} />
+                    )}
                 </div>
             )}
 
@@ -380,35 +421,88 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                     {showPanel === 'emojis' && (
                         <>
                             {/* Categories Bar */}
-                            <div className={panelTopBarClass}>
-                                {categories.map(cat => (
-                                    <button 
-                                        key={cat.id} 
-                                        onClick={(e) => handleItemClick(e, cat, 'category')}
-                                        // Long press handlers for Categories
-                                        onTouchStart={(e) => handleTouchStart(cat, 'category', e)}
-                                        onTouchMove={handleTouchMove}
-                                        onTouchEnd={handleTouchEnd}
-                                        onMouseDown={(e) => handleTouchStart(cat, 'category', e)}
-                                        onMouseMove={handleTouchMove}
-                                        onMouseUp={handleTouchEnd}
-                                        onMouseLeave={handleTouchEnd}
-                                        onContextMenu={(e) => e.preventDefault()}
-                                        className={`px-3 py-1 text-xs rounded-full whitespace-nowrap transition-all select-none flex items-center gap-1 ${activeCategory === cat.id ? activeCategoryClass : inactiveCategoryClass}`}
+                            <div className="relative">
+                                <div className={panelTopBarClass}>
+                                    {categories.map(cat => (
+                                        <button 
+                                            key={cat.id} 
+                                            onClick={(e) => handleItemClick(e, cat, 'category')}
+                                            // Long press handlers for Categories
+                                            onTouchStart={(e) => handleTouchStart(cat, 'category', e)}
+                                            onTouchMove={handleTouchMove}
+                                            onTouchEnd={handleTouchEnd}
+                                            onMouseDown={(e) => handleTouchStart(cat, 'category', e)}
+                                            onMouseMove={handleTouchMove}
+                                            onMouseUp={handleTouchEnd}
+                                            onMouseLeave={handleTouchEnd}
+                                            onContextMenu={(e) => e.preventDefault()}
+                                            className={`px-3 py-1 text-xs rounded-full whitespace-nowrap transition-all select-none flex items-center gap-1 ${activeCategory === cat.id ? activeCategoryClass : inactiveCategoryClass}`}
+                                        >
+                                            {cat.name}
+                                            {cat.allowedCharacterIds && cat.allowedCharacterIds.length > 0 && (
+                                                <Lock className="w-3 h-3 opacity-60" weight="bold" />
+                                            )}
+                                        </button>
+                                    ))}
+                                    <button onClick={() => onPanelAction('add-category')} className={categoryAddButtonClass}>+</button>
+                                    <div className="w-6 shrink-0 pointer-events-none" />
+                                </div>
+                                {emojiSelectionMode ? (
+                                    <div 
+                                        className={`absolute inset-0 z-10 flex items-center justify-end px-3 ${
+                                            isPixelStyle ? 'bg-[#eadfce]/70 backdrop-blur-[2px]' : 
+                                            isDiscordStyle ? 'bg-slate-950/70 backdrop-blur-[2px]' : 
+                                            'bg-white/60 backdrop-blur-[2px]'
+                                        }`}
                                     >
-                                        {cat.name}
-                                        {cat.allowedCharacterIds && cat.allowedCharacterIds.length > 0 && (
-                                            <Lock className="w-3 h-3 opacity-60" weight="bold" />
-                                        )}
-                                    </button>
-                                ))}
-                                <button onClick={() => onPanelAction('add-category')} className={categoryAddButtonClass}>+</button>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); setEmojiSelectionMode(false); }} 
+                                            className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors shadow-sm ${
+                                                isPixelStyle ? 'bg-[#c99872] text-[#fff7ed] hover:bg-[#b07d57]' :
+                                                isDiscordStyle ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' :
+                                                'bg-slate-200/80 text-slate-600 hover:bg-slate-300'
+                                            }`}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
+                                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="absolute right-0 top-0 bottom-0 z-10 flex items-center justify-end px-3 pointer-events-none">
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); setEmojiSelectionMode(true); }} 
+                                            className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors shadow-sm pointer-events-auto ${
+                                                isPixelStyle ? 'bg-[#c99872] text-[#fff7ed] hover:bg-[#b07d57]' :
+                                                isDiscordStyle ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' :
+                                                'bg-white/90 text-slate-600 hover:bg-slate-100 backdrop-blur-sm border border-slate-200/50'
+                                            }`}
+                                        >
+                                            <PencilSimple className="w-3.5 h-3.5" weight="bold" />
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="flex-1 overflow-y-auto no-scrollbar p-4">
                                 <div className="grid grid-cols-4 gap-3">
-                                    <button onClick={() => onPanelAction('emoji-import')} className={emojiImportTileClass}>+</button>
-                                    {emojis.map((e, i) => (
+                                    {emojiSelectionMode ? (
+                                        <button 
+                                            onClick={() => {
+                                                if (selectedEmojis.length > 0) {
+                                                    onPanelAction('delete-emoji-req', selectedEmojis);
+                                                }
+                                            }} 
+                                            className={`${emojiImportTileClass} !bg-red-50 !border-red-400 !text-red-500`}
+                                        >
+                                            <Trash className="w-8 h-8" weight="fill" />
+                                        </button>
+                                    ) : (
+                                        <button onClick={() => onPanelAction('emoji-import')} className={emojiImportTileClass}>+</button>
+                                    )}
+                                    {emojis.map((e, i) => {
+                                        const isSelected = selectedEmojiUrls.has(e.url);
+                                        return (
                                         <button 
                                             key={i} 
                                             onClick={(ev) => handleItemClick(ev, e, 'emoji')}
@@ -421,14 +515,16 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                                             onMouseUp={handleTouchEnd}
                                             onMouseLeave={handleTouchEnd}
                                             onContextMenu={(ev) => ev.preventDefault()}
-                                            className={emojiTileClass}
+                                            className={`${emojiTileClass} ${isSelected ? '!border-blue-500' : ''}`}
                                         >
                                             <div className="aspect-square w-full">
                                                 <img src={e.url} className="w-full h-full object-contain pointer-events-none" />
                                             </div>
                                             <span className={`text-[9px] truncate w-full text-center mt-0.5 leading-tight pointer-events-none ${emojiLabelClass}`}>{e.name}</span>
+                                            {isSelected && <div className="absolute inset-0 bg-blue-500/20 rounded-2xl pointer-events-none border-2 border-blue-500" />}
                                         </button>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </>
@@ -611,6 +707,7 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                 </div>
             )}
         </div>
+        </>
     );
 };
 

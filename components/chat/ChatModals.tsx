@@ -718,8 +718,18 @@ const ChatModals: React.FC<ChatModalsProps> = ({
                 footer={<><button onClick={() => setModalType('none')} className="flex-1 py-3 bg-slate-100 rounded-2xl">取消</button><button onClick={onDeleteEmoji} className="flex-1 py-3 bg-red-500 text-white font-bold rounded-2xl">删除</button></>}
             >
                 <div className="flex flex-col items-center gap-4 py-2">
-                    {selectedEmoji && <img src={selectedEmoji.url} className="w-24 h-24 object-contain rounded-xl border" />}
-                    <p className="text-center text-sm text-slate-500">确定要删除这个表情包吗？</p>
+                    {Array.isArray(selectedEmoji) ? (
+                        <div className="flex flex-wrap justify-center gap-2 max-h-48 overflow-y-auto no-scrollbar w-full px-2">
+                            {selectedEmoji.map((e: any, idx: number) => (
+                                <img key={idx} src={e.url} className="w-16 h-16 object-contain rounded-xl border border-slate-200" />
+                            ))}
+                        </div>
+                    ) : (
+                        selectedEmoji && <img src={selectedEmoji.url} className="w-24 h-24 object-contain rounded-xl border" />
+                    )}
+                    <p className="text-center text-sm text-slate-500">
+                        {Array.isArray(selectedEmoji) ? `确定要删除这 ${selectedEmoji.length} 个表情包吗？` : "确定要删除这个表情包吗？"}
+                    </p>
                 </div>
             </Modal>
 
