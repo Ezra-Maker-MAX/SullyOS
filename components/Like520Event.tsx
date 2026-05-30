@@ -138,6 +138,32 @@ const CHAR_CREATOR_URL = (((import.meta as any).env?.BASE_URL ?? '/') + 'like520
 
 export const CreatorIframe: React.FC<CreatorIframeProps> = ({ mode, charName, presets, isSully, draftKey, title, subtitle, onConfirm }) => {
     const iframeRef = useRef<HTMLIFrameElement>(null);
+    // 自定义部件（开发模式上传）—— 异步从 DB 读出，随 init 注入捏人器
+    const extraItemsRef = useRef<any[]>([]);
+    const readyRef = useRef(false);
+
+    const sendInit = useCallback(() => {
+        const iframeWin = iframeRef.current?.contentWindow;
+        if (!iframeWin) return;
+        iframeWin.postMessage({
+            type: 'like520_init',
+            payload: { mode, charName, presets, isSully: !!isSully, draftKey, title, subtitle, extraItems: extraItemsRef.current },
+        }, '*');
+    }, [mode, charName, presets, isSully, draftKey, title, subtitle]);
+
+    // 载入自定义部件；若 iframe 已就绪则补发一次 init 合并进去
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const parts = await DB.getCustomCreatorParts();
+                if (cancelled) return;
+                extraItemsRef.current = parts.map(p => ({ categoryKey: p.categoryKey, id: p.id, name: p.name, src: p.src, tintable: !!p.tintable }));
+                if (readyRef.current) sendInit();
+            } catch { /* 没有自定义部件时静默 */ }
+        })();
+        return () => { cancelled = true; };
+    }, [sendInit]);
 
     useEffect(() => {
         const handleMessage = (e: MessageEvent) => {
@@ -147,10 +173,8 @@ export const CreatorIframe: React.FC<CreatorIframeProps> = ({ mode, charName, pr
 
             if (e.data.type === 'like520_ready') {
                 console.log(`[520][creator:${mode}] iframe ready, sending init (isSully=${!!isSully})`);
-                iframeWin?.postMessage({
-                    type: 'like520_init',
-                    payload: { mode, charName, presets, isSully: !!isSully, draftKey, title, subtitle },
-                }, '*');
+                readyRef.current = true;
+                sendInit();
             } else if (e.data.type === 'like520_result' && e.data.payload) {
                 console.log(`[520][creator:${mode}] result received`);
                 onConfirm({
@@ -163,7 +187,7 @@ export const CreatorIframe: React.FC<CreatorIframeProps> = ({ mode, charName, pr
         };
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
-    }, [mode, charName, presets, isSully, draftKey, title, subtitle, onConfirm]);
+    }, [mode, sendInit, onConfirm]);
 
     return (
         <iframe

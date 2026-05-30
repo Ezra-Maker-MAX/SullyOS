@@ -1,6 +1,7 @@
 import React, { useMemo, useEffect, useLayoutEffect, useState, useRef } from 'react';
 import { useOS } from '../context/OSContext';
 import { INSTALLED_APPS, DOCK_APPS } from '../constants';
+import { isDevDebugAvailable } from '../utils/devDebug';
 import AppIcon from '../components/os/AppIcon';
 import { DB } from '../utils/db';
 import { CharacterProfile, Anniversary, AppID, DailySchedule } from '../types';
@@ -344,10 +345,14 @@ const Launcher: React.FC = () => {
   const dragMoved = useRef(0);
 
   // Pagination Logic
-  const gridApps = useMemo(() => 
-    INSTALLED_APPS.filter(app => !DOCK_APPS.includes(app.id)), 
-    []
-  );
+  const gridApps = useMemo(() => {
+    const devOk = isDevDebugAvailable();
+    return INSTALLED_APPS.filter(app =>
+      !DOCK_APPS.includes(app.id)
+      // 「捏脸·开发」仅在开发模式（右下角开发徽标可见时）显示
+      && (app.id !== AppID.CharCreatorDev || devOk)
+    );
+  }, []);
 
   const dockAppsConfig = useMemo(() => 
     DOCK_APPS.map(id => INSTALLED_APPS.find(app => app.id === id)).filter(Boolean) as typeof INSTALLED_APPS,

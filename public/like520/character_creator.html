@@ -579,6 +579,17 @@ function applyLike520Init(init) {
   if (titleEn && typeof init.subtitle === 'string') {
     titleEn.textContent = init.subtitle;
   }
+  // 运行时注入自定义部件（开发模式上传的）——合并进对应类目的 items（按 id 去重）
+  if (Array.isArray(init.extraItems) && init.extraItems.length) {
+    init.extraItems.forEach(it => {
+      if (!it || !it.categoryKey || !it.id || !it.src) return;
+      const cat = PARTS.find(p => p.key === it.categoryKey);
+      if (!cat || !Array.isArray(cat.items)) return;
+      if (cat.items.some(x => x.id === it.id)) return;
+      cat.items.push({ id: it.id, name: it.name || it.id, src: it.src, tintable: !!it.tintable });
+    });
+    if (typeof renderTabs === 'function') renderTabs();
+  }
   // 先看有没有上次的草稿；有就恢复，没就走 presets
   const draftLoaded = tryLoadDraft();
   if (!draftLoaded && init.presets && typeof init.presets === 'object') {

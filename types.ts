@@ -36,6 +36,7 @@ export enum AppID {
   QQBridge = 'qq_bridge', // QQ 桥接 — 通过 NapCat 把 QQ 私聊接入当前角色，共享 IndexedDB 上下文
   HotNews = 'hot_news', // 热点 — 分时段召回的多平台热榜可视化（决定角色可能聊起的话题）
   VRWorld = 'vrworld', // 彼方 — 角色自主登入的虚拟世界（定时驱动，房间里看小说/听歌/留言，产出活动卡注入聊天+记忆）
+  CharCreatorDev = 'char_creator_dev', // 捏脸系统开发模式 — 仅开发模式可见，向捏人器指定类目追加自定义部件
 }
 
 export interface SystemLog {
@@ -701,6 +702,23 @@ export interface VRCardMeta {
     segRange?: [number, number];
     /** 本次写下的批注摘要（保留正文，原文省略） */
     annotationExcerpts?: string[];
+}
+
+/**
+ * 捏脸系统自定义部件（开发模式追加）。运行时由 CreatorIframe 读出，随 like520_init
+ * 以 extraItems 注入捏人器，合并进对应类目的 PARTS。520 / 彼方 都会拿到。
+ */
+export interface CustomCreatorPart {
+    id: string;
+    /** 归属类目 key（如 skin / fronthair / outfit …，须与捏人器 PARTS 的 key 对应） */
+    categoryKey: string;
+    /** 面板里显示的名字 */
+    name: string;
+    /** 部件图（透明 PNG 的 data URL，须与捏人器画布同尺寸/同锚点） */
+    src: string;
+    /** 是否可被换色（对应 item.tintable） */
+    tintable?: boolean;
+    createdAt: number;
 }
 
 // --- SONGWRITING APP TYPES ---
@@ -1816,6 +1834,7 @@ export interface FullBackupData {
     novels?: NovelBook[];
     vrNovels?: VRWorldNovel[];          // 虚拟世界「彼方」全局小说库
     vrAnnotations?: VRNovelAnnotation[]; // 虚拟世界小说批注
+    customCreatorParts?: CustomCreatorPart[]; // 捏脸系统自定义部件
     songs?: SongSheet[]; // Songwriting app data
     
     // Bank Data
