@@ -557,17 +557,27 @@ const IS_EMBEDDED = window.parent !== window;
 let LIKE520_MODE = 'char';
 let LIKE520_CHAR_NAME = '';
 let LIKE520_IS_SULLY = false;
+let LIKE520_DRAFT_KEY = ''; // 调用方可传唯一 draftKey 做草稿隔离（如彼方按 char.id）
 
 function applyLike520Init(init) {
   if (!init) return;
   LIKE520_MODE = init.mode || 'char';
   LIKE520_CHAR_NAME = init.charName || '';
   LIKE520_IS_SULLY = !!init.isSully;
+  LIKE520_DRAFT_KEY = init.draftKey || '';
   const titleCn = document.querySelector('.title-cn');
   if (titleCn) {
-    titleCn.textContent = init.mode === 'user'
-      ? '诶？连你也……'
-      : `如果 ${LIKE520_CHAR_NAME || 'ta'} 变得小小的，那ta会是——`;
+    if (init.title) {
+      titleCn.textContent = init.title;
+    } else {
+      titleCn.textContent = init.mode === 'user'
+        ? '诶？连你也……'
+        : `如果 ${LIKE520_CHAR_NAME || 'ta'} 变得小小的，那ta会是——`;
+    }
+  }
+  const titleEn = document.querySelector('.title-en');
+  if (titleEn && typeof init.subtitle === 'string') {
+    titleEn.textContent = init.subtitle;
   }
   // 先看有没有上次的草稿；有就恢复，没就走 presets
   const draftLoaded = tryLoadDraft();
@@ -2055,6 +2065,8 @@ function closeModal() {
    key: mode + charName，让每个角色 + 是否是 user 各自存一份
    存的只是 state（小 JSON），不存图片 PNG */
 function getDraftKey() {
+  // 调用方传了唯一 draftKey（如彼方按 char.id）→ 草稿按它隔离，且与 520 互不串
+  if (LIKE520_DRAFT_KEY) return `like520_cc_draft_k_${LIKE520_DRAFT_KEY}`;
   return `like520_cc_draft_${LIKE520_MODE}_${LIKE520_CHAR_NAME || 'default'}`;
 }
 let saveDraftTimer = null;

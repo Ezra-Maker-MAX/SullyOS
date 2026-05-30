@@ -612,7 +612,9 @@ const ChibiEditor: React.FC<{
                     <span className="text-[14px] font-bold">捏 {char.name} 的小人</span>
                 </div>
                 <div className="flex-1 min-h-0">
-                    <CreatorIframe mode="char" charName={char.name} isSully={isSully} presets={presets} onConfirm={onConfirm} />
+                    <CreatorIframe mode="char" charName={char.name} isSully={isSully} presets={presets}
+                        draftKey={`vr_${char.id}`} title={`捏一个小人 · ${char.name}`} subtitle="彼方 · CHIBI"
+                        onConfirm={onConfirm} />
                 </div>
             </div>
         );

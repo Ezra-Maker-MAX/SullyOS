@@ -125,12 +125,18 @@ export interface CreatorIframeProps {
     charName?: string;
     presets?: Record<string, any>;
     isSully?: boolean;
+    /** 唯一草稿键（如彼方按 char.id），让草稿按角色隔离、与 520 互不串 */
+    draftKey?: string;
+    /** 覆盖标题（彼方用来去掉「变得小小的 520」文案） */
+    title?: string;
+    /** 覆盖英文副标题 */
+    subtitle?: string;
     onConfirm: (result: ChibiResult) => void;
 }
 
 const CHAR_CREATOR_URL = (((import.meta as any).env?.BASE_URL ?? '/') + 'like520/character_creator.html').replace(/\/+/g, '/');
 
-export const CreatorIframe: React.FC<CreatorIframeProps> = ({ mode, charName, presets, isSully, onConfirm }) => {
+export const CreatorIframe: React.FC<CreatorIframeProps> = ({ mode, charName, presets, isSully, draftKey, title, subtitle, onConfirm }) => {
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
     useEffect(() => {
@@ -143,7 +149,7 @@ export const CreatorIframe: React.FC<CreatorIframeProps> = ({ mode, charName, pr
                 console.log(`[520][creator:${mode}] iframe ready, sending init (isSully=${!!isSully})`);
                 iframeWin?.postMessage({
                     type: 'like520_init',
-                    payload: { mode, charName, presets, isSully: !!isSully },
+                    payload: { mode, charName, presets, isSully: !!isSully, draftKey, title, subtitle },
                 }, '*');
             } else if (e.data.type === 'like520_result' && e.data.payload) {
                 console.log(`[520][creator:${mode}] result received`);
@@ -157,7 +163,7 @@ export const CreatorIframe: React.FC<CreatorIframeProps> = ({ mode, charName, pr
         };
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
-    }, [mode, charName, presets, isSully, onConfirm]);
+    }, [mode, charName, presets, isSully, draftKey, title, subtitle, onConfirm]);
 
     return (
         <iframe
