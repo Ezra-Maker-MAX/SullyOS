@@ -48,29 +48,30 @@ const VRBroadcast: React.FC = () => {
         <div className="fixed left-1/2 -translate-x-1/2 z-[999] pointer-events-none"
             style={{ top: 'calc(env(safe-area-inset-top) + 6px)' }}>
             <style>{`@keyframes vrbcin{from{opacity:0;transform:translateY(-14px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
-                     @keyframes vrbcshimmer{0%{background-position:-120% 0}100%{background-position:220% 0}}`}</style>
-            <div className="relative flex items-center gap-2 px-3.5 py-1.5 rounded-full overflow-hidden"
+                     @keyframes vrbcshimmer{0%{background-position:-120% 0}100%{background-position:220% 0}}
+                     @keyframes vrbctwinkle{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1.1)}}`}</style>
+            <div className="relative flex items-center gap-2.5 pl-3 pr-3.5 py-1.5 rounded-full overflow-hidden backdrop-blur-xl"
                 style={{
-                    animation: 'vrbcin .35s cubic-bezier(.2,.9,.3,1.2)',
-                    background: 'linear-gradient(90deg,#3a2e6e,#5a3f9e,#3a2e6e)',
-                    border: '1px solid rgba(200,190,255,.4)',
-                    boxShadow: '0 6px 22px rgba(80,60,160,.5), inset 0 0 12px rgba(180,160,255,.25)',
+                    animation: 'vrbcin .45s cubic-bezier(.2,.9,.3,1.2)',
+                    background: 'linear-gradient(100deg, rgba(22,28,46,.82), rgba(14,18,30,.82))',
+                    border: '1px solid rgba(190,200,255,.28)',
+                    boxShadow: '0 10px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(200,210,255,.18), 0 0 18px rgba(150,170,255,.18)',
                 }}>
-                {/* 流光 */}
+                {/* 月光流光 */}
                 <div className="absolute inset-0 pointer-events-none" style={{
-                    background: 'linear-gradient(105deg,transparent 30%,rgba(255,255,255,.18) 50%,transparent 70%)',
+                    background: 'linear-gradient(105deg,transparent 32%,rgba(200,215,255,.16) 50%,transparent 68%)',
                     backgroundSize: '220% 100%',
-                    animation: 'vrbcshimmer 2.4s linear infinite',
+                    animation: 'vrbcshimmer 3s linear infinite',
                 }} />
-                <span className="relative text-[13px]">📢</span>
-                <span className="relative text-[11.5px] font-bold text-white whitespace-nowrap drop-shadow">
-                    <span className="text-amber-200">{cur.charName}</span>{extra} 正在彼方·{room.emoji}{room.name}
-                    {cur.novelTitle ? `读《${cur.novelTitle}》` : ''}…
+                <span className="relative text-[12px] opacity-80" style={{ filter: 'drop-shadow(0 0 5px rgba(180,195,255,.6))' }}>✦</span>
+                <span className="relative text-[11px] tracking-[0.04em] text-white/90 whitespace-nowrap font-light">
+                    <span className="text-amber-200/90 font-normal">{cur.charName}</span>{extra} 正漫游于彼方·{room.emoji}{room.name}
+                    {cur.novelTitle ? ` 读《${cur.novelTitle}》` : ''}
                 </span>
-                <span className="relative flex gap-0.5">
+                <span className="relative flex gap-1">
                     {[0, 1, 2].map(i => (
-                        <span key={i} className="w-1 h-1 rounded-full bg-indigo-200"
-                            style={{ animation: 'vrbcin .6s infinite alternate', animationDelay: `${i * 0.2}s` }} />
+                        <span key={i} className="w-1 h-1 rounded-full bg-indigo-100/80"
+                            style={{ animation: 'vrbctwinkle 1.4s infinite', animationDelay: `${i * 0.25}s` }} />
                     ))}
                 </span>
             </div>

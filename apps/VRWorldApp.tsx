@@ -450,12 +450,15 @@ const RoomScene: React.FC<{
             <VRStyleTag />
             <div className="relative flex-1 overflow-hidden">
                 <RoomBackground roomId={roomId} />
+                {/* 空灵氛围：星尘 + 暗角，与外壳呼应 */}
+                <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: 'radial-gradient(1px 1px at 22% 24%, rgba(255,255,255,.5), transparent), radial-gradient(1px 1px at 72% 16%, rgba(210,220,255,.45), transparent), radial-gradient(1px 1px at 60% 66%, rgba(230,225,255,.4), transparent)', animation: 'vrtwinkle 7s ease-in-out infinite' }} />
+                <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(120% 90% at 50% 30%, transparent 55%, rgba(5,6,14,.45) 100%)' }} />
                 {/* 顶栏 */}
-                <div className="absolute top-0 left-0 right-0 flex items-center gap-2 px-4 pt-3 pb-2 z-20"
-                    style={{ background: 'linear-gradient(180deg,rgba(0,0,0,.5),transparent)' }}>
-                    <button onClick={onClose} className="p-1.5 -ml-1.5 rounded-full bg-black/30 active:bg-black/50 text-white"><CaretLeft size={20} weight="bold" /></button>
-                    <span className="text-base font-black text-white drop-shadow flex items-center gap-1.5">{room.emoji} {room.name}</span>
-                    <span className="ml-auto text-[10px] text-white/70">{occupants.length} 人在场</span>
+                <div className="absolute top-0 left-0 right-0 flex items-center gap-2.5 px-4 pt-3.5 pb-3 z-20"
+                    style={{ background: 'linear-gradient(180deg,rgba(5,6,14,.55),transparent)' }}>
+                    <button onClick={onClose} className="p-1.5 -ml-1.5 rounded-full bg-white/10 backdrop-blur-md active:bg-white/20 text-white/90 border border-white/10"><CaretLeft size={19} weight="regular" /></button>
+                    <span className="text-[16px] text-white drop-shadow flex items-center gap-1.5 tracking-[0.12em]" style={{ fontFamily: `'Noto Serif SC',serif`, fontWeight: 500 }}>{room.emoji} {room.name}</span>
+                    <span className="ml-auto text-[10px] tracking-wider text-white/60">{occupants.length} 人在场</span>
                 </div>
 
                 {/* 听歌房：正在放 + 队列面板 */}
