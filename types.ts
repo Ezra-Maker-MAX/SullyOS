@@ -1944,6 +1944,7 @@ export interface FullBackupData {
     vrGuestbook?: VRGuestbookState;            // 留言簿共享状态
     vrLetters?: VRLetter[];                    // 邮局信件（本地存档+队列）
     vrSettings?: any[];                        // 彼方设置（独立 API + 调用记录）
+    vrPostOffice?: Record<string, string>;     // 邮局本机配置：身份 deviceId / 后端地址（存 localStorage）
     songs?: SongSheet[]; // Songwriting app data
     
     // Bank Data

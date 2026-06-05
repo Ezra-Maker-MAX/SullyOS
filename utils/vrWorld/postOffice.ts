@@ -146,6 +146,27 @@ export const PostOffice = {
     },
 };
 
+// ── 备份用：把邮局的本机配置随「设置 → 导出/导入备份」一起带走 ──────────
+// 带的是【身份 deviceId】（决定"我寄出的信"的归属）和【后端地址】；
+// admin token 是后端管理凭证，故意不写进可被分享的备份里，避免泄露。
+export function exportPostOfficeLocal(): Record<string, string> | undefined {
+    try {
+        const out: Record<string, string> = {};
+        const dev = localStorage.getItem(DEVICE_KEY); if (dev) out[DEVICE_KEY] = dev;
+        const base = localStorage.getItem(BASE_KEY); if (base) out[BASE_KEY] = base;
+        return Object.keys(out).length ? out : undefined;
+    } catch { return undefined; }
+}
+export function importPostOfficeLocal(data: Record<string, string> | null | undefined): void {
+    if (!data || typeof data !== 'object') return;
+    try {
+        if (typeof data[DEVICE_KEY] === 'string' && data[DEVICE_KEY]) localStorage.setItem(DEVICE_KEY, data[DEVICE_KEY]);
+        if (typeof data[BASE_KEY] === 'string') {
+            if (data[BASE_KEY]) localStorage.setItem(BASE_KEY, data[BASE_KEY]); else localStorage.removeItem(BASE_KEY);
+        }
+    } catch { /* ignore */ }
+}
+
 // ── 管理员 token：本地留存，免得每次重输（仅存在本机 localStorage）──────
 const ADMIN_TOKEN_KEY = 'vr_po_admin_token';
 export const getAdminToken = (): string => { try { return localStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch { return ''; } };

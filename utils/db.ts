@@ -9,6 +9,7 @@ import {
     LifeSimState, HandbookEntry, Tracker, TrackerEntry, HotNewsSnapshot,
     VRWorldNovel, VRNovelAnnotation, CustomCreatorPart, VRMusicRoomState, VRGuestbookState, VRLetter
 } from '../types';
+import { exportPostOfficeLocal, importPostOfficeLocal } from './vrWorld/postOffice';
 
 const DB_NAME = 'AetherOS_Data';
 const DB_VERSION = 57; // Bumped: v57 add 'vr_settings' store (彼方独立 API + 调用记录)
@@ -1911,6 +1912,7 @@ export const DB = {
           vrGuestbook: vrGuestbook && vrGuestbook.length ? vrGuestbook[0] : undefined,
           vrLetters,
           vrSettings,
+          vrPostOffice: exportPostOfficeLocal(), // 邮局本机配置（身份/后端地址，存 localStorage）
       };
   },
 
@@ -2029,6 +2031,7 @@ export const DB = {
           data.vrMusicRoom !== undefined,
           data.vrGuestbook !== undefined,
           data.vrLetters !== undefined,
+          (data as any).vrPostOffice !== undefined,
           data.pixelHomeAssets !== undefined,
           data.pixelHomeLayouts !== undefined,
           data.userProfile !== undefined,
@@ -2288,6 +2291,10 @@ export const DB = {
           }
           data.vrSettings = undefined as any;
       }, data.vrSettings?.length || 0);
+      await runSection('邮局身份', (data as any).vrPostOffice !== undefined, async () => {
+          importPostOfficeLocal((data as any).vrPostOffice);
+          (data as any).vrPostOffice = undefined;
+      }, 1);
       await runSection('歌曲', data.songs !== undefined, async () => {
           await clearAndAdd(STORE_SONGS, data.songs, '歌曲', false);
           data.songs = undefined as any;
