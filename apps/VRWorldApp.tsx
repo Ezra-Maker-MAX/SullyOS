@@ -12,7 +12,7 @@ import { VRScheduler } from '../utils/vrWorld/scheduler';
 import { VR_ROOMS, getRoom, VR_DEFAULT_INTERVAL_MIN } from '../utils/vrWorld/constants';
 import { buildNovelAsync, groupAnnotationsBySeg, getBookmark } from '../utils/vrWorld/novel';
 import { decodeTextFile } from '../utils/vrWorld/decodeText';
-import { PostOffice, MAX_LETTER_CHARS, exportIdentity, importIdentity, type RemoteReply, type RemoteLetterStat } from '../utils/vrWorld/postOffice';
+import { PostOffice, MAX_LETTER_CHARS, exportIdentity, importIdentity, getAdminToken, setAdminToken, type RemoteReply, type RemoteLetterStat, type RemoteAdminLetter } from '../utils/vrWorld/postOffice';
 import { getVRApi, setVRApi, getVRApiLog, clearVRApiLog, type VRApiCall } from '../utils/vrWorld/vrApi';
 import { safeResponseJson } from '../utils/safeApi';
 
@@ -633,6 +633,60 @@ const IdentityModal: React.FC<{ onImport: (code: string) => void; onClose: () =>
     );
 };
 
+// 后台：用 ADMIN_TOKEN 看后端「所有人」的信、按需删（点踩多的排在前）。token 仅存本机。
+const AdminModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+    const [token, setToken] = useState(getAdminToken());
+    const [letters, setLetters] = useState<RemoteAdminLetter[] | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [err, setErr] = useState('');
+    const [confirmId, setConfirmId] = useState<string | null>(null);
+    const load = async () => {
+        if (!token.trim()) { setErr('请先填入管理员 token'); return; }
+        setLoading(true); setErr('');
+        try { setAdminToken(token); setLetters(await PostOffice.adminList(token.trim(), 200)); }
+        catch (e: any) { setErr(e?.message === 'unauthorized' ? 'token 不对' : ('拉取失败：' + (e?.message || '检查网络'))); setLetters(null); }
+        finally { setLoading(false); }
+    };
+    const del = async (id: string) => {
+        try { await PostOffice.adminDelete(token.trim(), [id]); setLetters(ls => (ls || []).filter(l => l.id !== id)); setConfirmId(null); }
+        catch (e: any) { setErr('删除失败：' + (e?.message || '检查网络')); }
+    };
+    return (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center px-6 bg-black/55 backdrop-blur-sm" onClick={onClose}>
+            <div className="w-full max-w-[400px] max-h-[82vh] flex flex-col rounded-2xl p-4" onClick={e => e.stopPropagation()} style={{ background: 'linear-gradient(180deg,#221b12,#15100a)', border: '1px solid rgba(220,190,120,.28)', boxShadow: '0 16px 50px rgba(0,0,0,.6)' }}>
+                <div className="text-[13px] font-semibold text-amber-100 mb-1 shrink-0" style={{ fontFamily: `'Noto Serif SC',serif` }}>邮局后台</div>
+                <p className="text-[10px] text-white/45 leading-snug mb-2.5 shrink-0">用 worker 的 <b className="text-amber-200/70">ADMIN_TOKEN</b> 查看后端全部信件（按踩数、时间倒序，最多 200 条），可逐条删除。token 只存在本机。</p>
+                <div className="flex gap-1.5 mb-3 shrink-0">
+                    <input value={token} onChange={e => setToken(e.target.value)} type="password" placeholder="ADMIN_TOKEN" className="flex-1 rounded-lg bg-black/25 px-3 py-2 text-[11.5px] text-amber-50 placeholder-white/25 outline-none" style={{ border: '1px solid rgba(220,190,120,.2)' }} />
+                    <button onClick={load} disabled={loading} className="shrink-0 px-3.5 rounded-lg text-[11px] font-semibold text-black disabled:opacity-40" style={{ background: 'linear-gradient(120deg,#f3d08a,#e8b75e)' }}>{loading ? '…' : (letters ? '刷新' : '拉取')}</button>
+                </div>
+                {err && <div className="text-[10.5px] text-red-300/80 mb-2 shrink-0">{err}</div>}
+                <div className="flex-1 overflow-y-auto vr-reader-scroll -mx-1 px-1 min-h-0">
+                    {letters && letters.length === 0 && <p className="text-[10.5px] text-white/35">后端目前没有信件。</p>}
+                    {(letters || []).map(l => (
+                        <div key={l.id} className="rounded-lg p-2 mb-1.5 text-[11px]" style={{ background: 'rgba(255,255,255,.05)' }}>
+                            <div className="flex items-center gap-1.5 mb-1">
+                                <span className="text-amber-200/70 text-[9.5px]">{l.pen || '匿名'}</span>
+                                {l.dislikes > 0 && <span className="text-[8.5px] text-red-300/80 border border-red-400/30 rounded-full px-1.5 leading-tight">踩 {l.dislikes}</span>}
+                                <span className="ml-auto text-[8.5px] text-white/30">{new Date(l.created_at).toLocaleDateString()}</span>
+                            </div>
+                            <div className="text-white/75 leading-snug whitespace-pre-wrap mb-1">{l.content}</div>
+                            <div className="flex items-center gap-2 text-[8.5px] text-white/35">
+                                <span>赞{l.likes}</span><span>踩{l.dislikes}</span><span>读{l.views}</span><span>回{l.reply_count}</span>
+                                {confirmId === l.id
+                                    ? <button onClick={() => del(l.id)} className="ml-auto text-red-300 font-bold">确定删除</button>
+                                    : <button onClick={() => setConfirmId(l.id)} className="ml-auto text-white/45 active:text-red-300">删除</button>}
+                            </div>
+                        </div>
+                    ))}
+                    {!letters && !loading && <p className="text-[10.5px] text-white/30">填入 token 后点「拉取」。</p>}
+                </div>
+                <button onClick={onClose} className="mt-3 rounded-full py-2 text-[12.5px] text-white/70 shrink-0" style={{ border: '1px solid rgba(255,255,255,.16)' }}>关闭</button>
+            </div>
+        </div>
+    );
+};
+
 // ============ 玩法说明 ============
 const HelpModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const Block: React.FC<{ title: string; tone?: string; children: React.ReactNode }> = ({ title, tone = 'rgba(180,180,255,.9)', children }) => (
@@ -914,6 +968,7 @@ const PostOfficePanel: React.FC<{ addToast?: (m: string, t?: any) => void; chara
     const [replyFor, setReplyFor] = useState<VRLetter | null>(null);     // 亲自回信编辑器
     const [confirmReport, setConfirmReport] = useState<VRLetter | null>(null); // 点踩=举报二次确认
     const [identityOpen, setIdentityOpen] = useState(false);            // 身份导出/导入弹窗
+    const [adminOpen, setAdminOpen] = useState(false);                  // 后台（看后端全部信件）弹窗
     const [composeNew, setComposeNew] = useState<VRLetter | null>(null); // 用户自己写新信的草稿
     const [myStats, setMyStats] = useState<Record<string, RemoteLetterStat>>({}); // 我寄出的信热度（按 remoteId）
     const [tab, setTab] = useState<'outbox' | 'reply' | 'inbox' | 'drift' | 'box'>('outbox'); // 左侧分类
@@ -1106,6 +1161,8 @@ const PostOfficePanel: React.FC<{ addToast?: (m: string, t?: any) => void; chara
                 <button onClick={refreshInbox} disabled={!!busy} className="text-[10.5px] px-2.5 py-1 rounded-full bg-white/8 text-amber-100/90 disabled:opacity-40">{busy === 'inbox' ? '…' : '刷新收件箱'}</button>
                 <button onClick={collectReplies} disabled={!!busy} className="text-[10.5px] px-2.5 py-1 rounded-full bg-white/8 text-amber-100/90 disabled:opacity-40">{busy === 'collect' ? '…' : '收取回复'}</button>
                 <button onClick={() => setIdentityOpen(true)} title="邮局身份导出/导入" className="text-[10.5px] px-2.5 py-1 rounded-full bg-white/8 text-amber-100/90">身份</button>
+                {/* 后台入口只在本地开发（vite dev）下出现；部署到网页后普通用户看不到。仍需 ADMIN_TOKEN 才能拉数据。 */}
+                {import.meta.env.DEV && <button onClick={() => setAdminOpen(true)} title="后台：看后端全部信件（需 ADMIN_TOKEN，仅本地可见）" className="text-[10.5px] px-2.5 py-1 rounded-full bg-white/8 text-amber-100/90">后台</button>}
             </div>
 
             <div className="flex-1 flex min-h-0">
@@ -1253,6 +1310,8 @@ const PostOfficePanel: React.FC<{ addToast?: (m: string, t?: any) => void; chara
             {composeNew && <LetterEditModal letter={composeNew} title="写一封新漂流信" onSave={saveNewLetter} onCancel={() => setComposeNew(null)} />}
             {/* 身份导出/导入 */}
             {identityOpen && <IdentityModal onImport={doImport} onClose={() => setIdentityOpen(false)} />}
+            {/* 后台：看后端全部信件 */}
+            {adminOpen && <AdminModal onClose={() => setAdminOpen(false)} />}
         </div>
     );
 };

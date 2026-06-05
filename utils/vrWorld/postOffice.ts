@@ -59,13 +59,14 @@ export interface RemoteLetter {
 export interface RemoteReply { id: string; letter_id: string; pen: string; content: string; created_at: number; }
 /** 我寄出的信的热度统计（赞/踩/浏览量/回信数）。 */
 export interface RemoteLetterStat { id: string; likes: number; dislikes: number; views: number; reply_count: number; created_at: number; }
+export interface RemoteAdminLetter { id: string; pen: string; content: string; lang?: string; created_at: number; reply_count: number; likes: number; dislikes: number; views: number; }
 
 async function call<T>(path: string, opts: RequestInit & { query?: Record<string, string> } = {}): Promise<T> {
     const base = getPostOfficeBase();
     const qs = opts.query ? '?' + new URLSearchParams(opts.query).toString() : '';
     const res = await fetch(`${base}${path}${qs}`, {
         method: opts.method || 'GET',
-        headers: opts.body ? { 'Content-Type': 'application/json' } : undefined,
+        headers: { ...(opts.body ? { 'Content-Type': 'application/json' } : {}), ...(opts.headers as Record<string, string> || {}) },
         body: opts.body,
     });
     const data = await res.json().catch(() => ({}));
@@ -125,7 +126,30 @@ export const PostOffice = {
         if (letterIds.length === 0) return;
         await call('/release', { method: 'POST', body: JSON.stringify({ device: getDeviceId(), letterIds }) });
     },
+
+    /** [管理] 列出后端全部信件（按踩数、时间倒序）。token 走 Bearer 头，不进 URL。 */
+    async adminList(token: string, limit = 200): Promise<RemoteAdminLetter[]> {
+        const r = await call<{ letters: RemoteAdminLetter[] }>('/admin/list', {
+            query: { limit: String(limit) }, headers: { Authorization: `Bearer ${token}` },
+        });
+        return r.letters || [];
+    },
+
+    /** [管理] 删除指定信件（每批≤100）。 */
+    async adminDelete(token: string, letterIds: string[]): Promise<number> {
+        if (letterIds.length === 0) return 0;
+        const r = await call<{ deleted: number }>('/admin/delete', {
+            method: 'POST', headers: { Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ letterIds: letterIds.slice(0, 100) }),
+        });
+        return r.deleted || 0;
+    },
 };
+
+// ── 管理员 token：本地留存，免得每次重输（仅存在本机 localStorage）──────
+const ADMIN_TOKEN_KEY = 'vr_po_admin_token';
+export const getAdminToken = (): string => { try { return localStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch { return ''; } };
+export const setAdminToken = (t: string) => { try { t.trim() ? localStorage.setItem(ADMIN_TOKEN_KEY, t.trim()) : localStorage.removeItem(ADMIN_TOKEN_KEY); } catch { /* ignore */ } };
 
 // ── 身份导出 / 导入：换设备或清数据后找回「我的信」与责任 ──────────────
 const ID_PREFIX = 'sullypo';
