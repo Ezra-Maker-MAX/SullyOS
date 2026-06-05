@@ -19,28 +19,28 @@ import { safeResponseJson } from '../utils/safeApi';
 const genLocalId = (p: string) => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 
 // ── 邮局寄信「日额度」：纯前端软计数，给后端减负（不追求精准，清数据会重置）──
-// 从寄出第一封开始计时，24h 一个滚动窗口，窗口内最多 PO_DAILY_LIMIT 封，过期自动归零。
-const PO_DAILY_LIMIT = 15;
-const PO_QUOTA_KEY = 'vr_po_send_quota';
-const PO_REPLY_DAILY_LIMIT = 20;                 // 每日回信上限
-const PO_REPLY_QUOTA_KEY = 'vr_po_reply_quota';
-const PO_WINDOW_MS = 24 * 3600_000;
+// 从首封开始计时的滚动窗口，窗口内封顶、过期自动归零。两个额度各自独立。
+// 投信：与后端对齐——5 封 / 5 小时（后端 PO_RATE_LETTERS=5、LETTERS_WINDOW_MS=5h，且按封数扣额度）。
+const PO_SEND_QUOTA = { key: 'vr_po_send_quota', limit: 5, windowMs: 5 * 3600_000 };
+// 回信：前端自定日额度（后端无每日上限，仅 60/分钟防刷；前端更严是安全方向）。
+const PO_REPLY_QUOTA = { key: 'vr_po_reply_quota', limit: 20, windowMs: 24 * 3600_000 };
+type QuotaCfg = { key: string; limit: number; windowMs: number };
 const charLen = (s: string) => [...(s || '')].length;
-const readSendQuota = (key: string = PO_QUOTA_KEY): { windowStart: number; count: number } => {
+const readQuota = (q: QuotaCfg): { windowStart: number; count: number } => {
     try {
-        const raw = JSON.parse(localStorage.getItem(key) || 'null');
+        const raw = JSON.parse(localStorage.getItem(q.key) || 'null');
         if (raw && typeof raw.windowStart === 'number' && typeof raw.count === 'number'
-            && Date.now() - raw.windowStart < PO_WINDOW_MS) return raw;
+            && Date.now() - raw.windowStart < q.windowMs) return raw;
     } catch { /* ignore */ }
     return { windowStart: 0, count: 0 };
 };
-const bumpSendQuota = (n: number, key: string = PO_QUOTA_KEY) => {
-    const cur = readSendQuota(key);
+const bumpQuota = (q: QuotaCfg, n: number) => {
+    const cur = readQuota(q);
     const windowStart = cur.windowStart || Date.now();
-    try { localStorage.setItem(key, JSON.stringify({ windowStart, count: cur.count + n })); } catch { /* ignore */ }
+    try { localStorage.setItem(q.key, JSON.stringify({ windowStart, count: cur.count + n })); } catch { /* ignore */ }
 };
-const quotaResetHours = (windowStart: number) =>
-    windowStart ? Math.max(1, Math.ceil((windowStart + PO_WINDOW_MS - Date.now()) / 3600_000)) : 24;
+const quotaResetHours = (windowStart: number, windowMs: number) =>
+    windowStart ? Math.max(1, Math.ceil((windowStart + windowMs - Date.now()) / 3600_000)) : Math.ceil(windowMs / 3600_000);
 
 /** 气泡/动态里去掉开头多余的"自己名字"主语（角色播报本就该省略主语）。 */
 const stripSelfName = (text: string | undefined, name: string | undefined): string => {
@@ -1022,19 +1022,19 @@ const PostOfficePanel: React.FC<{ addToast?: (m: string, t?: any) => void; chara
         const tooLong = outQueued.filter(l => charLen(l.content) > MAX_LETTER_CHARS);
         if (tooLong.length) { addToast?.(`有 ${tooLong.length} 封超过 ${MAX_LETTER_CHARS} 字，请长按编辑精简后再寄`, 'error'); return; }
         // B：前端日额度（给后端减负），额度不够就只寄能寄的那几封，其余留队列
-        const q = readSendQuota();
-        const remaining = Math.max(0, PO_DAILY_LIMIT - q.count);
-        if (remaining <= 0) { addToast?.(`今天已寄满 ${PO_DAILY_LIMIT} 封，约 ${quotaResetHours(q.windowStart)} 小时后恢复`, 'info'); return; }
+        const q = readQuota(PO_SEND_QUOTA);
+        const remaining = Math.max(0, PO_SEND_QUOTA.limit - q.count);
+        if (remaining <= 0) { addToast?.(`寄信暂时到上限（${PO_SEND_QUOTA.limit} 封/${PO_SEND_QUOTA.windowMs / 3600_000} 小时），约 ${quotaResetHours(q.windowStart, PO_SEND_QUOTA.windowMs)} 小时后恢复`, 'info'); return; }
         const batch = outQueued.slice(0, remaining);
         const heldBack = outQueued.length - batch.length;
         setBusy('send');
         try {
             const ids = await PostOffice.uploadLetters(batch.map(l => ({ pen: l.pen, content: l.content })));
             await DB.saveVRLetters(batch.map((l, i) => ({ ...l, status: 'sent', remoteId: ids[i], sentAt: Date.now() })));
-            bumpSendQuota(batch.length);
+            bumpQuota(PO_SEND_QUOTA, batch.length);
             await load();
             addToast?.(heldBack > 0
-                ? `已寄出 ${ids.length} 封，今日额度用完，还剩 ${heldBack} 封约 ${quotaResetHours(readSendQuota().windowStart)} 小时后再寄`
+                ? `已寄出 ${ids.length} 封，额度用完，还剩 ${heldBack} 封约 ${quotaResetHours(readQuota(PO_SEND_QUOTA).windowStart, PO_SEND_QUOTA.windowMs)} 小时后再寄`
                 : `已寄出 ${ids.length} 封漂流信`, 'success');
         } catch (e: any) {
             const msg = /429|rate limit/i.test(e?.message || '')
@@ -1055,10 +1055,10 @@ const PostOfficePanel: React.FC<{ addToast?: (m: string, t?: any) => void; chara
     };
     const sendReplies = async () => {
         if (replyQueued.length === 0) return;
-        // 前端日额度：每天最多 PO_REPLY_DAILY_LIMIT 封回信，额度不足只发能发的，其余留队列
-        const q = readSendQuota(PO_REPLY_QUOTA_KEY);
-        const remaining = Math.max(0, PO_REPLY_DAILY_LIMIT - q.count);
-        if (remaining <= 0) { addToast?.(`今天已回满 ${PO_REPLY_DAILY_LIMIT} 封，约 ${quotaResetHours(q.windowStart)} 小时后恢复`, 'info'); return; }
+        // 前端日额度：每天最多 PO_REPLY_QUOTA.limit 封回信，额度不足只发能发的，其余留队列
+        const q = readQuota(PO_REPLY_QUOTA);
+        const remaining = Math.max(0, PO_REPLY_QUOTA.limit - q.count);
+        if (remaining <= 0) { addToast?.(`今天已回满 ${PO_REPLY_QUOTA.limit} 封，约 ${quotaResetHours(q.windowStart, PO_REPLY_QUOTA.windowMs)} 小时后恢复`, 'info'); return; }
         const batch = replyQueued.slice(0, remaining);
         const heldBack = replyQueued.length - batch.length;
         setBusy('reply');
@@ -1068,11 +1068,11 @@ const PostOfficePanel: React.FC<{ addToast?: (m: string, t?: any) => void; chara
                 content: l.reply!.userNote ? `${l.reply!.content}\n\n——\n${l.reply!.userNote}` : l.reply!.content,
             }));
             await PostOffice.uploadReplies(payload);
-            bumpSendQuota(batch.length, PO_REPLY_QUOTA_KEY);
+            bumpQuota(PO_REPLY_QUOTA, batch.length);
             await DB.saveVRLetters(batch.map(l => ({ ...l, replyStatus: 'sent' as const })));
             await load();
             addToast?.(heldBack > 0
-                ? `已发出 ${payload.length} 封回信，今日额度用完，还剩 ${heldBack} 封约 ${quotaResetHours(readSendQuota(PO_REPLY_QUOTA_KEY).windowStart)} 小时后再发`
+                ? `已发出 ${payload.length} 封回信，今日额度用完，还剩 ${heldBack} 封约 ${quotaResetHours(readQuota(PO_REPLY_QUOTA).windowStart, PO_REPLY_QUOTA.windowMs)} 小时后再发`
                 : `已发出 ${payload.length} 封回信`, heldBack > 0 ? 'info' : 'success');
         } catch (e: any) { addToast?.('发送失败：' + (e?.message || '检查网络'), 'error'); } finally { setBusy(null); }
     };
@@ -1223,19 +1223,19 @@ const PostOfficePanel: React.FC<{ addToast?: (m: string, t?: any) => void; chara
                 {/* 右侧正文 */}
                 <div className="flex-1 min-w-0 overflow-y-auto vr-reader-scroll px-3 py-2.5">
                     {tab === 'outbox' && (() => {
-                        const q = readSendQuota();
-                        const full = q.count >= PO_DAILY_LIMIT;
+                        const q = readQuota(PO_SEND_QUOTA);
+                        const full = q.count >= PO_SEND_QUOTA.limit;
                         return (
                             <>
-                                {/* 寄信日额度：常驻显示，方便随时看还剩几封 */}
+                                {/* 寄信额度：5 封/5 小时（与后端一致），常驻显示 */}
                                 <div className="flex items-center justify-between gap-2 text-[10px] mb-2.5 px-2 py-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,.04)' }}>
-                                    <span className="text-white/55">今日已寄 <b className={full ? 'text-red-300' : 'text-amber-200/90'}>{q.count}</b><span className="text-white/35"> / {PO_DAILY_LIMIT}</span></span>
-                                    {q.count > 0 && <span className="text-white/35">约 {quotaResetHours(q.windowStart)} 小时后{full ? '恢复' : '归零'}</span>}
+                                    <span className="text-white/55">已寄 <b className={full ? 'text-red-300' : 'text-amber-200/90'}>{q.count}</b><span className="text-white/35"> / {PO_SEND_QUOTA.limit}（每 {PO_SEND_QUOTA.windowMs / 3600_000} 小时）</span></span>
+                                    {q.count > 0 && <span className="text-white/35">约 {quotaResetHours(q.windowStart, PO_SEND_QUOTA.windowMs)} 小时后{full ? '恢复' : '归零'}</span>}
                                 </div>
                                 {outQueued.length === 0 ? <p className="text-[10.5px] text-white/35 leading-relaxed">角色在邮局写的漂流信会排在这里，你确认后一键寄出。也可以自己写一封。寄出时笔名会自动匿名。</p> : (
                                     <>
                                         <PagedList items={outQueued} perPage={6} render={l => <PendingLetterRow key={l.id} l={l} onMenu={setMenuFor} />} />
-                                        <button onClick={sendOutbox} disabled={!!busy} className="w-full mt-1 rounded-full py-2 text-[12px] font-semibold text-black disabled:opacity-40" style={{ background: 'linear-gradient(120deg,#f3d08a,#e8b75e)' }}>{busy === 'send' ? '寄出中…' : `一键寄出（${outQueued.length}）`}</button>
+                                        <button onClick={sendOutbox} disabled={!!busy || full} className="w-full mt-1 rounded-full py-2 text-[12px] font-semibold text-black disabled:opacity-40" style={{ background: 'linear-gradient(120deg,#f3d08a,#e8b75e)' }}>{busy === 'send' ? '寄出中…' : full ? `寄信已到上限（${PO_SEND_QUOTA.limit} 封/${PO_SEND_QUOTA.windowMs / 3600_000}h）` : `一键寄出（${outQueued.length}）`}</button>
                                     </>
                                 )}
                                 <button onClick={startCompose} className="w-full mt-1.5 rounded-full py-1.5 text-[11px] text-amber-100/90" style={{ border: '1px solid rgba(220,190,120,.3)' }}>自己写一封新漂流信</button>
@@ -1244,14 +1244,14 @@ const PostOfficePanel: React.FC<{ addToast?: (m: string, t?: any) => void; chara
                     })()}
 
                     {tab === 'reply' && (() => {
-                        const rq = readSendQuota(PO_REPLY_QUOTA_KEY);
-                        const full = rq.count >= PO_REPLY_DAILY_LIMIT;
+                        const rq = readQuota(PO_REPLY_QUOTA);
+                        const full = rq.count >= PO_REPLY_QUOTA.limit;
                         return (
                             <>
                                 {/* 回信日额度：常驻显示，用完锁发送 */}
                                 <div className="flex items-center justify-between gap-2 text-[10px] mb-2.5 px-2 py-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,.04)' }}>
-                                    <span className="text-white/55">今日已回 <b className={full ? 'text-red-300' : 'text-amber-200/90'}>{rq.count}</b><span className="text-white/35"> / {PO_REPLY_DAILY_LIMIT}</span></span>
-                                    {rq.count > 0 && <span className="text-white/35">约 {quotaResetHours(rq.windowStart)} 小时后{full ? '恢复' : '归零'}</span>}
+                                    <span className="text-white/55">今日已回 <b className={full ? 'text-red-300' : 'text-amber-200/90'}>{rq.count}</b><span className="text-white/35"> / {PO_REPLY_QUOTA.limit}</span></span>
+                                    {rq.count > 0 && <span className="text-white/35">约 {quotaResetHours(rq.windowStart, PO_REPLY_QUOTA.windowMs)} 小时后{full ? '恢复' : '归零'}</span>}
                                 </div>
                                 {replyQueued.length === 0 ? <p className="text-[10.5px] text-white/35 leading-relaxed">你亲自写好、还没发出的回信会排在这里。</p> : (
                                     <>
@@ -1263,7 +1263,7 @@ const PostOfficePanel: React.FC<{ addToast?: (m: string, t?: any) => void; chara
                                                     className="w-full mt-1.5 rounded-md bg-black/20 px-2 py-1 text-[11px] text-white placeholder-white/30 outline-none" />
                                             </div>
                                         )} />
-                                        <button onClick={sendReplies} disabled={!!busy || full} className="w-full mt-1 rounded-full py-2 text-[12px] font-semibold text-black disabled:opacity-40" style={{ background: 'linear-gradient(120deg,#f3d08a,#e8b75e)' }}>{busy === 'reply' ? '发送中…' : full ? `今日已回满 ${PO_REPLY_DAILY_LIMIT} 封` : `一键发送回信（${replyQueued.length}）`}</button>
+                                        <button onClick={sendReplies} disabled={!!busy || full} className="w-full mt-1 rounded-full py-2 text-[12px] font-semibold text-black disabled:opacity-40" style={{ background: 'linear-gradient(120deg,#f3d08a,#e8b75e)' }}>{busy === 'reply' ? '发送中…' : full ? `今日已回满 ${PO_REPLY_QUOTA.limit} 封` : `一键发送回信（${replyQueued.length}）`}</button>
                                     </>
                                 )}
                             </>
