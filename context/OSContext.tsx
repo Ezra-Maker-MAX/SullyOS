@@ -5,6 +5,7 @@ import { DB } from '../utils/db';
 import { ProactiveChat } from '../utils/proactiveChat';
 import { VRScheduler } from '../utils/vrWorld/scheduler';
 import { runVRSession } from '../utils/vrWorld/runSession';
+import { VR_DEFAULT_INTERVAL_MIN } from '../utils/vrWorld/constants';
 import { ChatParser } from '../utils/chatParser';
 import { safeFetchJson } from '../utils/safeApi';
 import { normalizeCharacterImpression, normalizeCharacterDefaults } from '../utils/impression';
@@ -1740,6 +1741,14 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           }
       };
       VRScheduler.onTrigger((charId: string, room?: string, letterId?: string) => { void runVR(charId, room, letterId); });
+
+      // 以角色 vrState 为准对账调度表：调度表存 localStorage、不随备份迁移，
+      // 导入备份后角色虽 enabled 但调度表为空，这里补建/清理使其按时触发。
+      VRScheduler.reconcile(
+          charactersRef.current
+              .filter(c => c.vrState?.enabled)
+              .map(c => ({ charId: c.id, intervalMinutes: c.vrState?.intervalMinutes || VR_DEFAULT_INTERVAL_MIN }))
+      );
 
       return () => {
           // Cleanup: detach proactive listeners when OSContext unmounts (unlikely but safe)
