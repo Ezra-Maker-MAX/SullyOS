@@ -219,6 +219,12 @@ export async function runVRSession(deps: VRSessionDeps): Promise<VRSessionResult
                 poTarget = targets.length > 0 ? targets[Math.floor(Math.random() * targets.length)] : null;
                 roomTurn = buildPostOfficeRoomTurn(poTarget ? { pen: poTarget.pen, content: poTarget.content } : null, char.name);
             }
+            // 把"眼前这封信聊的是什么"塞进召回 query —— 邮局没有在场玩家，
+            // 召回若只靠聊天历史就抓不到角色对信里话题的相关记忆/观点。
+            // 取要回的来信内容（forced > 随机来信）；只在读自己回信时取自己原信，
+            // 让角色召回"我当初为什么写这个"。截断到 200 字，够 embedding 抓语义即可。
+            const recallLetter = (forcedTarget || poTarget)?.content || poReadTarget?.content;
+            if (recallLetter) recallExtra.push(`一封信聊到：${recallLetter.slice(0, 200)}`);
         } else {
             // gym
             occupantsOf('gym').forEach(n => recallNames.add(n));
