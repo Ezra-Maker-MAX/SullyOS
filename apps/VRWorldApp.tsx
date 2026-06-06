@@ -2219,7 +2219,7 @@ const UserChibiEditor: React.FC<{
 
     if (creating) {
         return (
-            <div className="fixed inset-0 z-[60] flex flex-col bg-black" style={{ paddingTop: VR_OVERLAY_TOP }}>
+            <div className="fixed inset-0 z-[60] flex flex-col bg-black" style={{ paddingTop: VR_TOP }}>
                 <CreatorIframe mode="user" charName={userName} presets={presets}
                     draftKey="vr_user" title={`捏一个你自己 · ${userName}`} subtitle="彼方 · 你的 CHIBI"
                     onConfirm={onConfirm} />
