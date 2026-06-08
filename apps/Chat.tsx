@@ -1986,7 +1986,7 @@ const Chat: React.FC = () => {
     // 动森彩蛋：浅奶油米黄中心（上下绿条由 header/输入栏负责），配色参考 Pocket Camp。
     const acnhRootClass = 'flex flex-col h-full overflow-hidden relative font-sans transition-[background-color] duration-500';
     const acnhRootStyle: React.CSSProperties = {
-        backgroundColor: '#F2E9CC',
+        backgroundColor: '#F6F0D8',
         backgroundImage: 'none',
     };
     const finalRootClass = acnh ? acnhRootClass : chatRootClass;
@@ -2018,6 +2018,11 @@ const Chat: React.FC = () => {
                     border: 1.5px solid #eeb87f !important;
                     border-radius: 24px !important;
                     box-shadow: 0 4px 10px -5px rgba(150,100,55,0.32) !important;
+                }
+                /* 仅动森：聊天正文放大一点 */
+                .sully-bubble-ai .text-\\[15px\\], .sully-bubble-user .text-\\[15px\\] {
+                    font-size: 16.5px !important;
+                    line-height: 1.7 !important;
                 }
              `}</style>}
 
