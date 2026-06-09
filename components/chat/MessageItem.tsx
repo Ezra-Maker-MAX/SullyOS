@@ -661,7 +661,7 @@ interface MessageItemProps {
     voiceData?: { url: string; originalText: string; spokenText?: string; lang?: string };
     voiceLoading?: boolean;
     isVoicePlaying?: boolean;
-    onPlayVoice?: () => void;
+    onPlayVoice?: (id: number) => void;
     // Chat layout customization
     avatarShape?: 'circle' | 'rounded' | 'square';
     avatarSize?: 'small' | 'medium' | 'large';
@@ -2148,7 +2148,7 @@ const MessageItem = React.memo(({
                     {voiceData?.url ? (
                         <div className="max-w-[260px]">
                             <button
-                                onClick={(e) => { e.stopPropagation(); e.preventDefault(); onPlayVoice?.(); }}
+                                onClick={(e) => { e.stopPropagation(); e.preventDefault(); onPlayVoice?.(m.id); }}
                                 className="group flex items-center gap-2.5 w-full px-3 py-2 rounded-2xl transition-all duration-300 active:scale-[0.97] select-none"
                                 style={{
                                     background: isVoicePlaying
@@ -2271,7 +2271,7 @@ const MessageItem = React.memo(({
                                 style={{ background: vbBg || 'linear-gradient(135deg, rgba(0,0,0,0.03) 0%, rgba(0,0,0,0.06) 100%)', border: '1px solid rgba(0,0,0,0.05)' }}
                             >
                                 <button
-                                    onClick={(e) => { e.stopPropagation(); e.preventDefault(); onPlayVoice?.(); }}
+                                    onClick={(e) => { e.stopPropagation(); e.preventDefault(); onPlayVoice?.(m.id); }}
                                     className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center active:scale-[0.92] transition-transform"
                                     style={{ backgroundColor: vbBg ? 'rgba(255,255,255,0.25)' : 'rgba(148,163,184,0.2)' }}
                                 >

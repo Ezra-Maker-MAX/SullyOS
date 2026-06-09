@@ -52,6 +52,8 @@ const Chat: React.FC = () => {
     const [visibleCount, setVisibleCount] = useState(30);
     const [windowedFocusMsgId, setWindowedFocusMsgId] = useState<number | null>(null);
     const [flashMsgId, setFlashMsgId] = useState<number | null>(null);
+    // 角色切换入场动效计数：每次切角色 +1，给装饰性"召唤光扫"覆盖层换 key 重放动画（不重挂聊天本体）。
+    const [enterNonce, setEnterNonce] = useState(0);
     const WINDOW_RADIUS = 25;
     const [input, setInput] = useState('');
     const [showPanel, setShowPanel] = useState<'none' | 'actions' | 'emojis' | 'chars'>('none');
@@ -264,6 +266,12 @@ const Chat: React.FC = () => {
         audio.play().catch(() => {});
         setPlayingMsgId(msgId);
     };
+
+    // 稳定的播放回调：用 ref 持有最新闭包，引用永不变 —— 避免每条消息每次渲染都新建箭头函数，
+    // 否则 MessageItem 的 React.memo 会被击穿（30 条重组件每次都全量重渲染 = 进入聊天卡顿主因之一）。
+    const handlePlayVoiceRef = useRef(handlePlayVoice);
+    handlePlayVoiceRef.current = handlePlayVoice;
+    const onPlayVoiceStable = useCallback((id: number) => handlePlayVoiceRef.current(id), []);
 
     /** Extract <语音>...</语音> tag content from a message, if present */
     const extractVoiceTag = (content: string): string | null => {
@@ -577,6 +585,11 @@ const Chat: React.FC = () => {
             }
         }
     }, [activeCharacterId, reloadMessages]);
+
+    // 进入/切换角色时触发一次入场光效（首次打开也会触发：nonce 0→1）。
+    useEffect(() => {
+        if (activeCharacterId) setEnterNonce(n => n + 1);
+    }, [activeCharacterId]);
 
     useEffect(() => {
         let clearTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1904,6 +1917,13 @@ const Chat: React.FC = () => {
 
     const collapsedCount = Math.max(0, totalMsgCount - displayMessages.length);
 
+    // 稳定的思维链配置对象：只在角色/样式变化时重建，避免每次渲染新建对象击穿 MessageItem.memo。
+    const thinkingChainOptions = useMemo(() => ({
+        styleId: (char as any)?.thinkingChainStyle || 'echo',
+        customColors: (char as any)?.thinkingChainCustomColors,
+        onOpenSettings: () => setShowThinkingChainModal(true),
+    }), [(char as any)?.thinkingChainStyle, (char as any)?.thinkingChainCustomColors]);
+
     // Reset active category if it becomes invisible for the current character
     useEffect(() => {
         if (activeCategory !== 'default' && visibleCategories.length > 0 && !visibleCategories.some(c => c.id === activeCategory)) {
@@ -2001,6 +2021,21 @@ const Chat: React.FC = () => {
             className={finalRootClass}
             style={finalRootStyle}
         >
+             {/* 角色切换入场「召唤」光效：主色辉光从头像区(顶部)绽放 + 一道斜向高光扫过，二游式高级感。
+                 纯装饰、pointer-events-none、~0.7s 自动消失；用内联 @keyframes（CDN Tailwind 不可靠生成自定义 animate-*）。
+                 key={enterNonce} 让每次切角色重放，且只重挂这层轻量覆盖，不动聊天本体。 */}
+             {enterNonce > 0 && (
+                 <div key={enterNonce} aria-hidden className="absolute inset-0 z-[120] pointer-events-none overflow-hidden" style={{ animation: 'chatEnterFade 680ms ease-out forwards' }}>
+                     <style>{`
+                        @keyframes chatEnterFade { 0%{opacity:1} 72%{opacity:1} 100%{opacity:0} }
+                        @keyframes chatEnterBloom { 0%{opacity:0;transform:scale(.82)} 28%{opacity:1} 100%{opacity:0;transform:scale(1.06)} }
+                        @keyframes chatEnterSweep { 0%{transform:translateX(-65%) skewX(-12deg);opacity:0} 25%{opacity:.9} 100%{transform:translateX(75%) skewX(-12deg);opacity:0} }
+                     `}</style>
+                     <div className="absolute inset-0" style={{ animation: 'chatEnterBloom 720ms cubic-bezier(0.22,1,0.36,1) forwards', background: 'radial-gradient(120% 75% at 50% 16%, hsla(var(--primary-hue),70%,78%,0.5), transparent 62%)' }} />
+                     <div className="absolute -inset-y-[30%] -inset-x-[50%]" style={{ animation: 'chatEnterSweep 720ms cubic-bezier(0.22,1,0.36,1) forwards', background: 'linear-gradient(75deg, transparent 38%, rgba(255,255,255,0.55) 50%, transparent 62%)' }} />
+                 </div>
+             )}
+
              {activeTheme.customCss && <style>{activeTheme.customCss}</style>}
 
              {/* 动森彩蛋：作用域 CSS 覆盖气泡——奶油 AI 气泡 + 蜜桃用户气泡，暖棕文字，绕开 MessageItem 复杂逻辑 */}
@@ -2457,7 +2492,7 @@ const Chat: React.FC = () => {
                             voiceData={voiceDataMap[m.id]}
                             voiceLoading={voiceLoading.has(m.id)}
                             isVoicePlaying={playingMsgId === m.id}
-                            onPlayVoice={() => handlePlayVoice(m.id)}
+                            onPlayVoice={onPlayVoiceStable}
                             avatarShape={osTheme.chatAvatarShape}
                             avatarSize={osTheme.chatAvatarSize}
                             avatarMode={osTheme.chatAvatarMode}
@@ -2468,11 +2503,7 @@ const Chat: React.FC = () => {
                             pendingIndicator={osTheme.chatPendingIndicator !== false}
                             onMcdSendCart={handleMcdSendCart}
                             onMcdCandidate={handleMcdCandidate}
-                            thinkingChainOptions={{
-                                styleId: (char as any).thinkingChainStyle || 'echo',
-                                customColors: (char as any).thinkingChainCustomColors,
-                                onOpenSettings: () => setShowThinkingChainModal(true),
-                            }}
+                            thinkingChainOptions={thinkingChainOptions}
                         />
                         </div>
                     );

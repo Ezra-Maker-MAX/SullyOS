@@ -326,14 +326,16 @@ const ImportRecoveryPopup: React.FC<{
   );
 };
 
-// App 懒加载时的占位：居中三点轻脉冲，复用全局 dot-pulse 动画，配合外壳的毛玻璃背景不抢戏。
+// App 懒加载时的占位：居中三点轻脉冲，配合外壳的毛玻璃背景不抢戏。
 // chunk 命中缓存后几乎一闪而过，仅首次打开某 App 时短暂可见。
+// 用内联 @keyframes 而非 Tailwind 自定义 animate-* —— CDN 版 Tailwind 不可靠生成自定义动画类。
 const AppLoadingFallback: React.FC = () => (
   <div className="w-full h-full flex items-center justify-center bg-transparent">
+    <style>{`@keyframes appLoadDot{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1.1)}}`}</style>
     <div className="flex items-center gap-1.5">
-      <span className="w-2.5 h-2.5 rounded-full bg-primary/70 animate-dot-pulse" style={{ animationDelay: '0ms' }} />
-      <span className="w-2.5 h-2.5 rounded-full bg-primary/70 animate-dot-pulse" style={{ animationDelay: '160ms' }} />
-      <span className="w-2.5 h-2.5 rounded-full bg-primary/70 animate-dot-pulse" style={{ animationDelay: '320ms' }} />
+      <span className="w-2.5 h-2.5 rounded-full bg-primary/70" style={{ animation: 'appLoadDot 1.2s ease-in-out infinite' }} />
+      <span className="w-2.5 h-2.5 rounded-full bg-primary/70" style={{ animation: 'appLoadDot 1.2s ease-in-out infinite', animationDelay: '160ms' }} />
+      <span className="w-2.5 h-2.5 rounded-full bg-primary/70" style={{ animation: 'appLoadDot 1.2s ease-in-out infinite', animationDelay: '320ms' }} />
     </div>
   </div>
 );
