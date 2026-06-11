@@ -764,7 +764,19 @@ ${xhsEnabled ? `${[notionEnabled, feishuEnabled, notionNotesEnabled].filter(Bool
                     // 引用回复：把"被引用的原话"做成独立的上下文框，用户的新回复另起一行突出出来。
                     // 旧格式 [回复 "引用前50字..."]: 回复 会把引用和回复挤在一行，引用往往比回复长得多，
                     // 模型注意力被引用淹没、只对引用做反应而忽略真正的新消息（即"对方只看到引用看不到回复"）。
-                    const rawQuote = typeof m.replyTo.content === 'string' ? m.replyTo.content : '';
+                    let rawQuote = typeof m.replyTo.content === 'string' ? m.replyTo.content : '';
+                    // 双语消息存储为 `原文\n%%BILINGUAL%%\n译文` —— 引用摘要只取原文侧。
+                    // 关键：绝不能让 %%BILINGUAL%% 标记混进引用头。下游 cleanApiMessages 会把整条
+                    // 消息在该标记处截断，用户引用双语消息时「并回复了 ↓」和用户的实际回复会被
+                    // 一起截掉（= 翻译模式下"角色只看到引用、看不到回复"）。
+                    if (/%%BILINGUAL%%/i.test(rawQuote)) {
+                        const sides = rawQuote.split(/%%BILINGUAL%%/i).map(s => s.trim());
+                        rawQuote = sides.find(s => !!s) || '';
+                    }
+                    rawQuote = rawQuote
+                        .replace(/<翻译>\s*<原文>([\s\S]*?)<\/原文>\s*<译文>[\s\S]*?<\/译文>\s*<\/翻译>/g, '$1')
+                        .replace(/<\/?翻译>|<\/?原文>|<\/?译文>/g, '')
+                        .trim();
                     const quoted = rawQuote.length > 60 ? rawQuote.slice(0, 60) + '…' : rawQuote;
                     // name 记的是被引用消息的说话人：char.name = 用户在回复 char 本人之前的话；'我' = 用户引用自己。
                     const whose = m.replyTo.name === char.name ? '你之前说的' : (m.replyTo.name === '我' ? '自己说的' : (m.replyTo.name || '对方') + '说的');

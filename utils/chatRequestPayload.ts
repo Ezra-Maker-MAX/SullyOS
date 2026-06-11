@@ -122,7 +122,12 @@ function deriveListeningFromSnapshot(
     return { userListeningContext, isListeningTogether, musicCfg: cfg };
 }
 
-function cleanApiMessages(apiMessages: Array<{ role: string; content: any }>): Array<{ role: string; content: any }> {
+/**
+ * 剥离历史里旧的双语标签: `%%BILINGUAL%%` 形态整条在标记处截断 (只留原文侧),
+ * `<翻译>` XML 形态只留 <原文>。导出仅为单测 — 引用头绝不能混入 %%BILINGUAL%%
+ * (见 chatPrompts.buildMessageHistory 的引用摘要清洗), 否则截断会吃掉用户的实际回复。
+ */
+export function cleanApiMessages(apiMessages: Array<{ role: string; content: any }>): Array<{ role: string; content: any }> {
     return apiMessages.map((msg: any) => {
         if (typeof msg.content !== 'string') return msg;
         let c: string = msg.content;
