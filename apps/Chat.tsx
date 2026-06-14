@@ -15,6 +15,7 @@ import { isLuckinActivatedInMessages, LUCKIN_ACTIVATE_TRIGGER, LUCKIN_DEACTIVATE
 import MessageItem from '../components/chat/MessageItem';
 import McdMiniApp from '../components/mcd/McdMiniApp';
 import LuckinMiniApp from '../components/luckin/LuckinMiniApp';
+import LuckinLocationModal from '../components/luckin/LuckinLocationModal';
 import { PRESET_THEMES, DEFAULT_ARCHIVE_PROMPTS } from '../components/chat/ChatConstants';
 import ChatHeader from '../components/chat/ChatHeaderShell';
 import CharacterEntryTransition from '../components/chat/CharacterEntryTransition';
@@ -1071,24 +1072,23 @@ const Chat: React.FC = () => {
 
     // 瑞幸聊天点单模式: 激活态用 React state (临时会话态, 不落库)
     const [luckinMode, setLuckinMode] = useState(false);
+    const [showLuckinLoc, setShowLuckinLoc] = useState(false); // 瑞一杯定位选择弹窗
     const luckinActivated = luckinMode;
     const [luckinAppOpen, setLuckinAppOpen] = useState(false); // 旧小程序壳, 现已不主动开
     const luckinConfiguredFlag = useMemo(() => isLuckinConfigured(), [showPanel, luckinActivated]);
 
     const activateLuckin = useCallback(() => {
         if (!isLuckinConfigured()) { addToast('请先到设置 → 瑞幸 启用并填入 MCP Token', 'info'); return; }
-        luckinChatRef.current = { active: true };
-        setLuckinMode(true);
         setShowPanel('none');
-        addToast('瑞一杯已开启 ☕ 跟 ta 说想喝什么', 'info');
-        // 抓一次定位, 注入给角色 (queryShopList/createOrder 要经纬度)
-        if (typeof navigator !== 'undefined' && navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => { luckinChatRef.current = { active: true, longitude: pos.coords.longitude, latitude: pos.coords.latitude }; },
-                () => { /* 定位失败: 保持激活, 角色会问你在哪个城市 */ },
-                { enableHighAccuracy: true, timeout: 8000 }
-            );
-        }
+        setShowLuckinLoc(true); // 先选定位 (GPS 常抓到机房位置, 让用户选城市)
+    }, [addToast]);
+
+    // 选完定位 → 正式激活角色瑞幸模式, 把坐标注入给角色
+    const onLuckinLocationPick = useCallback((lng: number, lat: number, cityName?: string) => {
+        luckinChatRef.current = { active: true, longitude: lng, latitude: lat, cityName };
+        setLuckinMode(true);
+        setShowLuckinLoc(false);
+        addToast(`瑞一杯已开启 ☕ 定位: ${cityName || '已设置'}`, 'info');
     }, [addToast]);
 
     const deactivateLuckin = useCallback(() => {
@@ -2695,8 +2695,6 @@ const Chat: React.FC = () => {
                             pendingIndicator={osTheme.chatPendingIndicator !== false}
                             onMcdSendCart={handleMcdSendCart}
                             onMcdCandidate={handleMcdCandidate}
-                            onLuckinSendCart={handleLuckinSendCart}
-                            onLuckinCandidate={handleLuckinCandidate}
                             thinkingChainOptions={thinkingChainOptions}
                         />
                         </div>
@@ -2793,13 +2791,22 @@ const Chat: React.FC = () => {
                         <div className="flex items-center gap-1.5 text-[#0B1F3A] font-bold">
                             <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#C6A15B] animate-pulse"/>
                             🦌 瑞一杯进行中
+                            {luckinChatRef.current?.cityName && <span className="font-normal text-[#0B1F3A]/60">· {luckinChatRef.current.cityName}</span>}
                         </div>
-                        <button
-                          onClick={deactivateLuckin}
-                          className="px-2.5 py-0.5 bg-[#0B1F3A]/10 text-[#0B1F3A] rounded-full text-[11px] font-bold active:scale-95"
-                        >
-                          结束
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => setShowLuckinLoc(true)}
+                              className="px-2.5 py-0.5 bg-[#0B1F3A]/10 text-[#0B1F3A] rounded-full text-[11px] font-bold active:scale-95"
+                            >
+                              📍 改定位
+                            </button>
+                            <button
+                              onClick={deactivateLuckin}
+                              className="px-2.5 py-0.5 bg-[#0B1F3A]/10 text-[#0B1F3A] rounded-full text-[11px] font-bold active:scale-95"
+                            >
+                              结束
+                            </button>
+                        </div>
                     </div>
                 )}
                 {replyTarget && (
@@ -2961,6 +2968,13 @@ const Chat: React.FC = () => {
                 onSendMessage={handleLuckinMiniAppSend}
                 onStateChange={handleLuckinMiniAppStateChange}
                 onConfirmOrder={handleLuckinAppConfirm}
+            />
+
+            {/* 🦌 瑞一杯定位选择 */}
+            <LuckinLocationModal
+                open={showLuckinLoc}
+                onClose={() => setShowLuckinLoc(false)}
+                onPick={onLuckinLocationPick}
             />
 
 
