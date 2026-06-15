@@ -778,7 +778,11 @@ export const useChatAI = ({
             //  - reasoning_effort：OpenAI 系（o1/o3、GLM-4.5、deepseek-reasoner 等）
             //  - extra_body.thinking：LiteLLM 系桥
             // 关掉则一个都不传，避免无谓的 thinking token 计费。
-            if (payload.flags.thinkingActive) {
+            // ⚠️ 工具模式(瑞幸点单/麦当劳)下绝不带 thinking/reasoning 参数: "thinking + tools" 同发
+            //    Gemini 等会直接 400 INVALID_ARGUMENT —— 表现就是"开了思考链的角色一点单就报错,
+            //    换个没开思考链的角色就好"。工具循环优先, 思考链这一轮让步。
+            const toolModeActive = payload.flags.luckinChatActive || payload.flags.mcdActive || payload.flags.luckinActive;
+            if (payload.flags.thinkingActive && !toolModeActive) {
                 const m: string = baseReqBody.model || '';
                 if (/^claude-/i.test(m) && !/-thinking$/i.test(m)) {
                     baseReqBody.model = `${m}-thinking`;
@@ -813,7 +817,10 @@ export const useChatAI = ({
             // 300s 超时兜底，返回时 push 已落库（或失败）。外层 finally 统一清 isTyping /
             // KeepAlive / 跑 memory palace 后处理，与本地路径完全对齐。
             // worker 端跑完 LLM → push → SW → activeMsgRuntime.flushInboxToChat 写 DB 并刷 UI。
-            if (isInstantConfigReady()) {
+            // 瑞幸聊天点单 / 麦当劳 / 瑞幸小程序 这些"客户端工具循环"模式必须走本地 fetch:
+            // instant push 会把请求交给 worker 并在这里提前 return, 工具循环(callLuckinTool 等)根本跑不到,
+            // 表现就是"选了城市也没用 / 角色不下单"。这些模式下跳过 instant push, 用本地 fetch 跑工具循环。
+            if (isInstantConfigReady() && !payload.flags.luckinChatActive && !payload.flags.mcdActive && !payload.flags.luckinActive) {
                 const instantResult = await sendInstantPushAndAwaitReply({
                     contactName: char.name,
                     messages: fullMessages as InstantPushPayload['messages'],
@@ -876,7 +883,8 @@ export const useChatAI = ({
                     if (!toolCalls || !toolCalls.length) break;
                     loopMessages.push({
                         role: 'assistant',
-                        content: data.choices[0].message.content || '',
+                        // 空 content + tool_calls 在 Gemini 兼容层会被判 INVALID_ARGUMENT, 给个占位
+                        content: data.choices[0].message.content || '(调用工具中)',
                         tool_calls: toolCalls,
                     } as any);
                     for (const tc of toolCalls) {
@@ -977,7 +985,8 @@ export const useChatAI = ({
                     if (!toolCalls || !toolCalls.length) break;
                     loopMessages.push({
                         role: 'assistant',
-                        content: data.choices[0].message.content || '',
+                        // 空 content + tool_calls 在 Gemini 兼容层会被判 INVALID_ARGUMENT, 给个占位
+                        content: data.choices[0].message.content || '(调用工具中)',
                         tool_calls: toolCalls,
                     } as any);
                     for (const tc of toolCalls) {
@@ -1073,7 +1082,8 @@ export const useChatAI = ({
                     if (!toolCalls || !toolCalls.length) break;
                     loopMessages.push({
                         role: 'assistant',
-                        content: data.choices[0].message.content || '',
+                        // 空 content + tool_calls 在 Gemini 兼容层会被判 INVALID_ARGUMENT, 给个占位
+                        content: data.choices[0].message.content || '(调用工具中)',
                         tool_calls: toolCalls,
                     } as any);
                     for (const tc of toolCalls) {
@@ -1198,7 +1208,17 @@ export const useChatAI = ({
         } catch (e: any) {
             // 注意: 这个 catch 兜的是「拿到 API 响应之后」的整条后处理管线 (applyAssistantPostProcessing,
             // 13 步)。这里抛错多半不是网络问题, 而是解析/正则/落库异常。别再叫"连接中断"误导排查。
-            await DB.saveMessage({ charId: char.id, role: 'system', type: 'text', content: `[回复处理失败: ${e.message}]` });
+            const errMsg = e?.message || String(e);
+            // 瑞一杯模式下报错: 大概率是聊天模型/中转不支持 function calling(tools) → 带 tools 一发就 400。
+            // 在 APK 里看不到控制台, 这里把完整原因 + 解法存成可读消息, 方便排查。
+            if (luckinChatRef?.current?.active && /\b400\b|tool|function[_\s-]?call/i.test(errMsg)) {
+                await DB.saveMessage({
+                    charId: char.id, role: 'system', type: 'text',
+                    content: `[瑞一杯失败] ${errMsg}\n\n大概率是你当前聊天用的「模型/中转」不支持函数调用(function calling / tools)——瑞一杯靠角色自己调工具点单, 模型不支持就会直接报 400。\n解决: 换一个支持 tools 的模型/中转 (如官方 OpenAI / Claude / 多数主流中转)。\n另外确认: APK 是全新存储, 你的聊天 API 配置(密钥/地址/模型)在 APK 里填好了吗?`,
+                });
+            } else {
+                await DB.saveMessage({ charId: char.id, role: 'system', type: 'text', content: `[回复处理失败: ${errMsg}]` });
+            }
             setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
         } finally {
             KeepAlive.stop();

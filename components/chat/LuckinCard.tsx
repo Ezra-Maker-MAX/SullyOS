@@ -400,6 +400,54 @@ const CartCard: React.FC<{ items: LuckinCartItem[] }> = ({ items }) => {
     );
 };
 
+// ========== 子卡片: 单个商品 (switchProduct / queryProductDetailInfo 返回的单品 + 规格) ==========
+
+const isSingleProduct = (d: any): boolean =>
+    !!d && typeof d === 'object' && !Array.isArray(d) && !!d.skuCode && !!(d.productName || d.name);
+
+const SingleProductCard: React.FC<{ data: any }> = ({ data }) => {
+    const name = pickFirst<string>(data, ['productName', 'name']) || '瑞幸商品';
+    const price = pickFirst<any>(data, ['estimatePrice', 'currentPrice', 'price']);
+    const initPrice = pickFirst<any>(data, ['initialPrice', 'initPrice']);
+    const image = pickFirst<string>(data, ['pictureUrl', 'breviaryPicUrl', 'bigPicUrl']);
+    const attrs: any[] = Array.isArray(data.productAttrs) ? data.productAttrs : [];
+    // 已选规格
+    const selected: string[] = [];
+    for (const g of attrs) {
+        const sub = Array.isArray(g?.productSubAttrs) ? g.productSubAttrs.find((s: any) => s?.selected) : null;
+        if (sub?.attributeName) selected.push(sub.attributeName);
+    }
+    return (
+        <div className="space-y-2">
+            <div className="text-[10px] text-[#16386F]/70 font-bold uppercase">已选规格</div>
+            <div className="flex gap-2 bg-white/80 rounded-lg p-2 border border-[#EFE9DC]">
+                <div className="w-12 h-12 rounded-md bg-[#FAF7F0] overflow-hidden shrink-0 flex items-center justify-center">
+                    {image ? <img src={image} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={(e: any) => { e.target.style.display = 'none'; }} /> : <span className="text-xl">{luckinItemEmoji(name)}</span>}
+                </div>
+                <div className="flex-1 min-w-0">
+                    <div className="font-bold text-[12px] text-slate-800 truncate">{name}</div>
+                    {selected.length > 0 && <div className="text-[10px] text-slate-500 truncate">{selected.join(' · ')}</div>}
+                    {price != null && (
+                        <div className="text-[12px] font-bold text-[#16386F]">
+                            {fmtMoney(price)}
+                            {initPrice != null && initPrice !== price && <span className="line-through text-slate-300 ml-1 text-[10px]">{fmtMoney(initPrice)}</span>}
+                        </div>
+                    )}
+                </div>
+            </div>
+            {/* 各规格可选项 (供角色/用户参考) */}
+            {attrs.map((g: any, gi: number) => (
+                Array.isArray(g?.productSubAttrs) && g.productSubAttrs.length > 1 ? (
+                    <div key={gi} className="text-[10px] text-slate-500">
+                        <span className="text-slate-400">{g.attributeName}：</span>
+                        {g.productSubAttrs.map((s: any) => s?.attributeName).filter(Boolean).join(' / ')}
+                    </div>
+                ) : null
+            ))}
+        </div>
+    );
+};
+
 // ========== 子卡片: 收货地址 ==========
 
 const AddressList: React.FC<{ data: any }> = ({ data }) => {
@@ -701,7 +749,9 @@ const LuckinCard: React.FC<LuckinCardProps> = ({ toolName, args, result, error, 
                     </>
                 ) : (
                     <>
-                        {effectiveKind === 'menu' && menuItems && menuItems.length > 0 && itemsHaveDisplayFields ? (
+                        {isSingleProduct(result) ? (
+                            <SingleProductCard data={result} />
+                        ) : effectiveKind === 'menu' && menuItems && menuItems.length > 0 && itemsHaveDisplayFields ? (
                             <MenuList items={menuItems} onSendCart={onSendCart} onCandidate={onCandidate} />
                         ) : effectiveKind === 'address' && result ? (
                             <AddressList data={result} />

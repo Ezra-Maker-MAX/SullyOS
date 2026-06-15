@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getCurrentPositionSmart } from '../../utils/geo';
 
 /**
  * 瑞幸定位选择 (点"瑞一杯"时弹出)
@@ -32,14 +33,16 @@ const LuckinLocationModal: React.FC<{
 
     if (!open) return null;
 
-    const useGeo = () => {
-        if (typeof navigator === 'undefined' || !navigator.geolocation) { setErr('当前环境不支持定位, 请选城市或手输'); return; }
+    const useGeo = async () => {
         setLocating(true); setErr(null); setGeo(null);
-        navigator.geolocation.getCurrentPosition(
-            (pos) => { setLocating(false); setGeo({ lng: pos.coords.longitude, lat: pos.coords.latitude, acc: pos.coords.accuracy ?? 99999 }); },
-            (e) => { setLocating(false); setErr(`定位失败: ${e.message}`); },
-            { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-        );
+        try {
+            const r = await getCurrentPositionSmart(); // 原生走 Capacitor 插件(弹权限), 浏览器走 navigator
+            setGeo({ lng: r.longitude, lat: r.latitude, acc: r.accuracy });
+        } catch (e: any) {
+            setErr(e?.message || '定位失败, 直接选城市也行');
+        } finally {
+            setLocating(false);
+        }
     };
 
     const submitManual = () => {

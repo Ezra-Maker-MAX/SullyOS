@@ -763,13 +763,24 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                       try {
                           const clone = response.clone();
                           const text = await clone.text();
+                          // 把发出去的请求体摘要也记上 —— 排查"只有点单(带工具)报错"必须看到 model/参数/tools/消息结构
+                          let reqSummary = '';
+                          try {
+                              const b = (config as any)?.body;
+                              if (typeof b === 'string') {
+                                  const j = JSON.parse(b);
+                                  const toolNames = Array.isArray(j.tools) ? j.tools.map((t: any) => t?.function?.name).filter(Boolean) : [];
+                                  const roles = Array.isArray(j.messages) ? j.messages.map((m: any) => m.role + (m.tool_calls ? '(tool_calls)' : '')).join(',') : '';
+                                  reqSummary = `\n--- Request ---\nmodel: ${j.model}\ntemperature: ${j.temperature} | top_p: ${j.top_p} | reasoning_effort: ${j.reasoning_effort} | thinking: ${j.thinking ? 'on' : 'off'}\ntools(${toolNames.length}): ${toolNames.join(', ')}\nmessages(${(j.messages || []).length}) roles: ${roles}`;
+                              }
+                          } catch { /* 解析不了就算了 */ }
                           setSystemLogs(prev => [{
                               id: `log-${Date.now()}`,
                               timestamp: Date.now(),
                               type: 'network',
                               source: 'API Request',
                               message: `HTTP ${response.status} Error`,
-                              detail: `URL: ${urlStr}\nResponse: ${text.substring(0, 500)}`
+                              detail: `URL: ${urlStr}\nResponse: ${text.substring(0, 500)}${reqSummary}`
                           }, ...prev.slice(0, 49)]); // Keep last 50
                       } catch (e) {
                           setSystemLogs(prev => [{

@@ -32,15 +32,80 @@ export interface OpenAITool {
     };
 }
 
+/**
+ * 把 MCP 的 inputSchema 清洗成 Gemini / 主流模型函数声明能吃的 schema 子集。
+ *
+ * 为什么需要: Gemini 的 function declaration 只认 OpenAPI 3.0 的一个**很窄的子集**,
+ * 原样把 MCP 的 JSON-Schema 塞过去, 里面只要有它不认的关键字 ($schema / additionalProperties /
+ * default / examples / title / const / oneOf/anyOf/allOf / $ref / pattern / minLength...),
+ * 就会整条请求 400 INVALID_ARGUMENT —— 表现就是"只有点单(带工具)报错, 普通聊天没事"。
+ *
+ * 这里只保留 Gemini 支持的字段: type / description / enum / items / properties / required / nullable,
+ * 递归清洗; 顺手把 type 规范成小写, 把 ["string","null"] 这种联合类型拍成 string + nullable。
+ */
+const GEMINI_TYPES = new Set(['string', 'number', 'integer', 'boolean', 'array', 'object']);
+
+const sanitizeSchemaForGemini = (schema: any, depth = 0): any => {
+    if (!schema || typeof schema !== 'object' || depth > 6) {
+        return { type: 'string' };
+    }
+    const out: any = {};
+
+    // type (允许 ["string","null"] → string + nullable)
+    let t = schema.type;
+    if (Array.isArray(t)) {
+        const nonNull = t.find((x: any) => x !== 'null');
+        if (t.includes('null')) out.nullable = true;
+        t = nonNull;
+    }
+    if (typeof t === 'string' && GEMINI_TYPES.has(t.toLowerCase())) {
+        out.type = t.toLowerCase();
+    }
+
+    if (typeof schema.description === 'string') out.description = schema.description;
+    if (Array.isArray(schema.enum) && schema.enum.length) out.enum = schema.enum.map((e: any) => String(e));
+    if (schema.nullable === true) out.nullable = true;
+
+    // object → properties / required
+    const props = schema.properties;
+    if (props && typeof props === 'object') {
+        out.type = out.type || 'object';
+        out.properties = {};
+        for (const k of Object.keys(props)) {
+            out.properties[k] = sanitizeSchemaForGemini(props[k], depth + 1);
+        }
+        if (Array.isArray(schema.required) && schema.required.length) {
+            out.required = schema.required.filter((r: any) => typeof r === 'string' && out.properties[r]);
+        }
+    }
+
+    // array → items
+    if ((out.type === 'array' || schema.items) && schema.items) {
+        out.type = out.type || 'array';
+        out.items = sanitizeSchemaForGemini(schema.items, depth + 1);
+    }
+
+    if (!out.type) out.type = out.properties ? 'object' : 'string';
+    return out;
+};
+
+/** 顶层 parameters 必须是 object schema */
+const sanitizeParameters = (inputSchema: any): any => {
+    const base = inputSchema && typeof inputSchema === 'object'
+        ? sanitizeSchemaForGemini(inputSchema)
+        : { type: 'object', properties: {} };
+    if (base.type !== 'object') return { type: 'object', properties: {} };
+    if (!base.properties) base.properties = {};
+    return base;
+};
+
 export const luckinToolsToOpenAI = (tools: LuckinToolDef[]): OpenAITool[] => {
     return tools.map(t => ({
         type: 'function' as const,
         function: {
             name: t.name,
             description: t.description || `瑞幸 MCP 工具 ${t.name}`,
-            parameters: t.inputSchema && typeof t.inputSchema === 'object'
-                ? t.inputSchema
-                : { type: 'object', properties: {} },
+            parameters: sanitizeParameters(t.inputSchema),
         },
     }));
 };
