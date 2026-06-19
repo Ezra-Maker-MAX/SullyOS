@@ -1651,6 +1651,7 @@ export interface CharacterProfile {
       records: PhoneEvidence[];
       customApps?: PhoneCustomApp[];
       simLogs?: PhoneSimLog[]; // 「生活记录」：人格模拟演出留存
+      chatReadAt?: number;     // 上次打开 Messages 的时间戳，用于计算未读
   };
 
   voiceProfile?: {

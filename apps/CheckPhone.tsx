@@ -194,6 +194,16 @@ const CheckPhone: React.FC = () => {
         setPage(0);
     };
 
+    // 打开 Messages：把已读时间戳推到现在 → 清掉未读红点
+    const openChat = () => {
+        if (targetChar) {
+            updateCharacter(targetChar.id, {
+                phoneState: { ...targetChar.phoneState, records: targetChar.phoneState?.records || [], chatReadAt: Date.now() },
+            });
+        }
+        setActiveAppId('chat');
+    };
+
     const handleDeleteRecord = async (record: PhoneEvidence) => {
         if (!targetChar) return;
 
@@ -530,7 +540,10 @@ Format:
 
     const momentsSub = socialRecords.length ? `${socialRecords.length} new posts` : 'nothing shared';
     const taobaoSub = orderRecords.length ? `${orderRecords.length} items in cart` : 'cart is empty';
-    const messageSub = chatRecords.length ? `${chatRecords.length} unread messages` : 'no messages';
+    // 未读 = 上次打开 Messages 之后才生成的聊天记录；打开即清零，不再一直挂红点
+    const chatReadAt = targetChar?.phoneState?.chatReadAt || 0;
+    const unreadChats = chatRecords.filter(r => r.timestamp > chatReadAt).length;
+    const messageSub = chatRecords.length === 0 ? 'no messages' : unreadChats ? `${unreadChats} unread messages` : 'all caught up';
 
     // pseudo screen-time + weather (decorative, deterministic per char)
     const seed = charName.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
@@ -937,7 +950,7 @@ Format:
             {/* App cards */}
             <div className="grid grid-cols-2 gap-3.5 mb-3.5">
                 <HomeCard icon={<ChatCircleDots size={24} weight="light" />} label="Message" sub={messageSub} accent="#8b9cff"
-                    badge={chatRecords.length || undefined} onClick={() => setActiveAppId('chat')} />
+                    badge={unreadChats || undefined} onClick={openChat} />
                 <HomeCard icon={<ImagesSquare size={24} weight="light" />} label="Moments" sub={momentsSub} accent="#c084fc"
                     onClick={() => setActiveAppId('social')} />
                 <HomeCard icon={<Hamburger size={24} weight="light" />} label="Food" sub={foodSub} accent="#fbbf24"
@@ -1111,9 +1124,9 @@ Format:
                         <button onClick={() => setActiveAppId('call')} className="flex items-center justify-center text-white/70 p-2.5 hover:text-white rounded-2xl transition active:scale-90">
                             <Phone size={22} weight="light" />
                         </button>
-                        <button onClick={() => setActiveAppId('chat')} className="relative flex items-center justify-center text-white/70 p-2.5 hover:text-white rounded-2xl transition active:scale-90">
+                        <button onClick={openChat} className="relative flex items-center justify-center text-white/70 p-2.5 hover:text-white rounded-2xl transition active:scale-90">
                             <ChatCircleDots size={22} weight="light" />
-                            {chatRecords.length > 0 && <span className="absolute top-1 right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">{chatRecords.length}</span>}
+                            {unreadChats > 0 && <span className="absolute top-1 right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">{unreadChats}</span>}
                         </button>
                         <button onClick={handleExitPhone} aria-label="断开连接"
                             className="relative flex items-center justify-center w-14 h-14 rounded-full active:scale-90 transition -my-1"
