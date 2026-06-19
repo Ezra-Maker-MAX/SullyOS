@@ -807,18 +807,19 @@ ${xhsEnabled ? `${[notionEnabled, feishuEnabled, notionNotesEnabled].filter(Bool
                 else if (m.type === 'transfer') {
                     const tMeta = m.metadata || {};
                     const amtStr = tMeta.amount !== undefined ? ` ${tMeta.amount}` : '';
+                    const uName = userProfile?.name || '用户';
                     if (tMeta.receipt === 'accepted') {
                         content = m.role === 'user'
-                            ? `${timeStr} [系统: 用户接收了你的转账${amtStr}]`
-                            : `${timeStr} [系统: 你接收了用户的转账${amtStr}]`;
+                            ? `${timeStr} [系统: ${uName}接收了你的转账${amtStr}]`
+                            : `${timeStr} [系统: 你接收了${uName}的转账${amtStr}]`;
                     } else if (tMeta.receipt === 'returned') {
                         content = m.role === 'user'
-                            ? `${timeStr} [系统: 用户退回了你的转账${amtStr}]`
-                            : `${timeStr} [系统: 你退回了用户的转账${amtStr}]`;
+                            ? `${timeStr} [系统: ${uName}退回了你的转账${amtStr}]`
+                            : `${timeStr} [系统: 你退回了${uName}的转账${amtStr}]`;
                     } else {
                         content = m.role === 'user'
-                            ? `${timeStr} [系统: 用户向你转账${amtStr}（待你处理，可收下或退回）]`
-                            : `${timeStr} [系统: 你向用户转账${amtStr}]`;
+                            ? `${timeStr} [系统: ${uName}向你转账${amtStr}（待你处理，可收下或退回）]`
+                            : `${timeStr} [系统: 你向${uName}转账${amtStr}]`;
                     }
                 }
                 else if (m.type === 'social_card') {
