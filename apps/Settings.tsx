@@ -814,7 +814,7 @@ const Settings: React.FC = () => {
 
       {/* Header */}
       <div className="bg-white/85 border-b border-white/40 shrink-0 z-10 sticky top-0" style={{ paddingTop: 'var(--safe-top)' }}>
-        <div className="h-20 flex items-end pb-3 px-4">
+        <div className="flex items-center px-4 py-3">
         <div className="flex items-center gap-2 w-full">
             <button onClick={closeApp} className="p-2 -ml-2 rounded-full hover:bg-black/5 active:scale-90 transition-transform">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-600">

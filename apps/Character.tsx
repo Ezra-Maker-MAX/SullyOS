@@ -1019,11 +1019,11 @@ ${isInitialGeneration ? `
            </div>
        ) : formData && (
            <div className="flex flex-col h-full animate-fade-in bg-slate-50/50 relative">
-               {/* INCREASED HEIGHT HERE */}
-               {/* safe-area: OUTER 保留渐变背景 + 模糊 + sticky，把刘海高度塞进 paddingTop；
-                   INNER 维持原来的固定高度内容行（h-32 不能直接吃 padding，否则 border-box 下内容塌缩） */}
+               {/* safe-area: OUTER 保留渐变背景 + 模糊 + sticky，刘海高度由 paddingTop 让位；
+                   INNER 不再用 h-32 沉底——那是老的「做高栏 + 内容沉底」状态栏预留写法，会和 safe-top 叠加出一大块空白。
+                   改为内容自然高度、直接贴在 safe-top 下方。 */}
                <div className="bg-gradient-to-b from-white/90 to-transparent backdrop-blur-sm shrink-0 z-40 sticky top-0" style={{ paddingTop: 'var(--safe-top)' }}>
-                 <div className="h-32 flex flex-col justify-end px-5 pb-2">
+                 <div className="flex flex-col px-5 pt-2 pb-2">
                    <div className="flex justify-between items-center mb-3">
                        <button onClick={handleBack} className="p-2 -ml-2 rounded-full hover:bg-white/60 flex items-center gap-1 text-slate-600"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg><span className="text-sm font-medium">列表</span></button>
                        <button onClick={() => { setActiveCharacterId(formData.id); openApp(AppID.Chat); }} className="text-xs px-3 py-1.5 bg-primary text-white rounded-full font-bold shadow-sm shadow-primary/30 flex items-center gap-1 active:scale-95 transition-transform"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path d="M3.105 2.288a.75.75 0 0 0-.826.95l1.414 4.926H16.5a.75.75 0 0 1 0 1.5H3.693l-1.414 4.926a.75.75 0 0 0 .826.95 28.897 28.897 0 0 0 15.293-7.155.75.75 0 0 0 0-1.114A28.897 28.897 0 0 0 3.105 2.288Z" /></svg>发消息</button>
