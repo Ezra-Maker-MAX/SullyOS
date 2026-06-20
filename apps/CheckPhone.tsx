@@ -963,7 +963,7 @@ Format:
             {innerQuote ? (
                 <button onClick={() => setShowInner(true)} className="block w-full text-left mb-5 group">
                     <p className="text-[13px] text-white/65 italic leading-relaxed line-clamp-1">「{innerQuote}」</p>
-                    <span className="text-[9px] tracking-wider text-white/30 group-active:text-white/55 uppercase">TA 此刻的内心 · 点按展开</span>
+                    <span className="text-[9px] tracking-wider text-white/30 group-active:text-white/55">有些话没说出口 · 轻触</span>
                 </button>
             ) : (
                 <p className="text-[13px] text-white/55 italic mb-5 leading-relaxed">{fallbackQuote}</p>
