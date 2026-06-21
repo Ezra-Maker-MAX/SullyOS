@@ -121,10 +121,12 @@ const WorldbookApp: React.FC = () => {
     if (isEditing) {
         return (
             <div className="h-full w-full bg-slate-50 flex flex-col font-sans animate-fade-in">
-                <div className="h-16 flex items-center justify-between px-4 bg-white/80 backdrop-blur-md border-b border-slate-200 shrink-0 z-20">
-                    <button onClick={() => setIsEditing(false)} className="px-3 py-1 text-slate-500 font-bold text-sm">取消</button>
-                    <span className="font-bold text-slate-800">{editingBook ? '编辑条目' : '新建条目'}</span>
-                    <button onClick={handleSave} className="px-4 py-1.5 bg-indigo-500 text-white rounded-full text-xs font-bold shadow-md active:scale-95 transition-transform">保存</button>
+                <div className="bg-white/80 backdrop-blur-md border-b border-slate-200 shrink-0 z-20" style={{ paddingTop: 'var(--safe-top)' }}>
+                    <div className="h-16 flex items-center justify-between px-4">
+                        <button onClick={() => setIsEditing(false)} className="px-3 py-1 text-slate-500 font-bold text-sm">取消</button>
+                        <span className="font-bold text-slate-800">{editingBook ? '编辑条目' : '新建条目'}</span>
+                        <button onClick={handleSave} className="px-4 py-1.5 bg-indigo-500 text-white rounded-full text-xs font-bold shadow-md active:scale-95 transition-transform">保存</button>
+                    </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -182,17 +184,19 @@ const WorldbookApp: React.FC = () => {
             <div className="absolute bottom-0 left-0 w-full h-32 bg-gradient-to-t from-white/80 to-transparent pointer-events-none z-10"></div>
 
             {/* Header */}
-            <div className="h-20 bg-white/70 backdrop-blur-xl flex items-end pb-3 px-6 border-b border-white/40 shrink-0 sticky top-0 z-20 shadow-sm">
-                <div className="flex justify-between items-center w-full">
-                    <button onClick={closeApp} className="p-2 -ml-2 rounded-full hover:bg-black/5 active:scale-90 transition-transform">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-600"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
-                    </button>
-                    <span className="font-bold text-slate-700 text-lg tracking-wide flex items-center gap-2">
-                        <DiamondsFour size={18} className="text-indigo-500" /> 世界书
-                    </span>
-                    <button onClick={handleCreate} className="w-9 h-9 bg-indigo-500 text-white rounded-full shadow-lg shadow-indigo-200 flex items-center justify-center active:scale-90 transition-transform hover:bg-indigo-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                    </button>
+            <div className="bg-white/70 backdrop-blur-xl border-b border-white/40 shrink-0 sticky top-0 z-20 shadow-sm" style={{ paddingTop: 'var(--safe-top)' }}>
+                <div className="flex items-center px-6 py-3">
+                    <div className="flex justify-between items-center w-full">
+                        <button onClick={closeApp} className="p-2 -ml-2 rounded-full hover:bg-black/5 active:scale-90 transition-transform">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-600"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
+                        </button>
+                        <span className="font-bold text-slate-700 text-lg tracking-wide flex items-center gap-2">
+                            <DiamondsFour size={18} className="text-indigo-500" /> 世界书
+                        </span>
+                        <button onClick={handleCreate} className="w-9 h-9 bg-indigo-500 text-white rounded-full shadow-lg shadow-indigo-200 flex items-center justify-center active:scale-90 transition-transform hover:bg-indigo-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                        </button>
+                    </div>
                 </div>
             </div>
 

@@ -873,7 +873,7 @@ const LifeSimApp: React.FC = () => {
         winter: { bg: '#d0d4e0', accent: '#7878a0', titlebar: '#9898b8', windowBg: '#eaebf2' },
     };
     const pal = seasonPalette[season] || seasonPalette.spring;
-    const topSafePadding = 'max(12px, env(safe-area-inset-top, 12px))';
+    const topSafePadding = 'max(12px, var(--safe-top))';
 
     const TAB_LABELS: Record<string, string> = { npcs: '住户.exe', drama: '动态.log', relations: '关系.dat' };
 

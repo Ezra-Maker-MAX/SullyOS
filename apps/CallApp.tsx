@@ -1047,7 +1047,7 @@ const CallApp: React.FC = () => {
           </div>
         )}
 
-        <div className="relative z-10 flex flex-col h-full px-5 pt-10 pb-5">
+        <div className="relative z-10 flex flex-col h-full px-5 pb-5" style={{ paddingTop: 'max(2.5rem, var(--safe-top))' }}>
           {/* header */}
           <div className="shrink-0">
             <div className="text-[10px] tracking-[0.42em] text-white/35 font-semibold">CHAT WITH</div>
@@ -1140,7 +1140,7 @@ const CallApp: React.FC = () => {
   }
   if (viewMode === 'history') {
     return (
-      <div className="h-full w-full bg-gradient-to-b from-[#140d28] via-[#0a0613] to-[#0a0613] text-white px-5 pt-10 pb-6 flex flex-col">
+      <div className="h-full w-full bg-gradient-to-b from-[#140d28] via-[#0a0613] to-[#0a0613] text-white px-5 pb-6 flex flex-col" style={{ paddingTop: 'max(2.5rem, var(--safe-top))' }}>
         <div className="flex items-center justify-between">
           <button onClick={() => setViewMode('role-select')} className="text-sm text-white/45">← 返回</button>
           <h1 className="text-lg font-medium">通话记录</h1>
@@ -1190,7 +1190,7 @@ const CallApp: React.FC = () => {
   }
   if (viewMode === 'record-detail' && recordDetail) {
     return (
-      <div className="h-full w-full bg-gradient-to-b from-[#140d28] via-[#0a0613] to-[#0a0613] text-white px-5 pt-10 pb-6 flex flex-col">
+      <div className="h-full w-full bg-gradient-to-b from-[#140d28] via-[#0a0613] to-[#0a0613] text-white px-5 pb-6 flex flex-col" style={{ paddingTop: 'max(2.5rem, var(--safe-top))' }}>
         <div className="flex items-center justify-between">
           <button onClick={() => setViewMode('history')} className="text-sm text-white/45">← 返回</button>
           <div className="text-sm text-white/80 font-medium">{recordDetail.characterName}</div>
@@ -1256,8 +1256,8 @@ const CallApp: React.FC = () => {
       </div>
       <div className="relative z-10 flex flex-col h-full">
       {/* top channel bar */}
-      <div className="relative px-5 pt-9">
-        <div className="absolute top-9 left-5 leading-tight">
+      <div className="relative px-5" style={{ paddingTop: 'max(2.25rem, var(--safe-top))' }}>
+        <div className="absolute left-5 leading-tight" style={{ top: 'max(2.25rem, var(--safe-top))' }}>
           <div className="text-[9px] tracking-[0.28em] text-white/45 font-semibold">PRIVATE CHANNEL</div>
           <div className="mt-1.5 flex items-center gap-1.5 text-[8px] tracking-[0.22em] text-white/35">
             VOICE SYNC
@@ -1268,7 +1268,7 @@ const CallApp: React.FC = () => {
             </span>
           </div>
         </div>
-        <div className="absolute top-9 right-5 flex items-center gap-1 text-[9px] tracking-[0.2em] text-white/45 font-medium">
+        <div className="absolute right-5 flex items-center gap-1 text-[9px] tracking-[0.2em] text-white/45 font-medium" style={{ top: 'max(2.25rem, var(--safe-top))' }}>
           信号良好
           <span className="flex items-end gap-[2px] h-2.5 ml-0.5">
             {[4, 6, 8, 10].map((h, i) => (

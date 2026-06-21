@@ -581,19 +581,21 @@ const MusicApp: React.FC = () => {
             style={{ background: `linear-gradient(180deg, #ffffff 0%, ${C.bg} 60%, ${C.bgDeep} 100%)` }}>
             <BokehBg />
             {/* Header */}
-            <div className="relative z-10 flex items-center justify-between h-12 px-4 shizuku-glass-strong"
-              style={{ borderBottom: `1px solid rgba(255,255,255,0.3)` }}>
-              <button onClick={() => setShowLyricSync(false)} className="text-[11px] px-2 py-1 rounded-full" style={{ color: C.muted }}>取消</button>
-              <div className="flex items-center gap-1.5">
-                <Crosshair size={13} weight="duotone" color={C.primary} />
-                <span className="text-[12px] tracking-[0.25em]" style={{ color: C.primary, fontFamily: 'Georgia, serif' }}>歌词对轴</span>
+            <div className="relative z-10 shizuku-glass-strong"
+              style={{ borderBottom: `1px solid rgba(255,255,255,0.3)`, paddingTop: 'var(--safe-top)' }}>
+              <div className="flex items-center justify-between h-12 px-4">
+                <button onClick={() => setShowLyricSync(false)} className="text-[11px] px-2 py-1 rounded-full" style={{ color: C.muted }}>取消</button>
+                <div className="flex items-center gap-1.5">
+                  <Crosshair size={13} weight="duotone" color={C.primary} />
+                  <span className="text-[12px] tracking-[0.25em]" style={{ color: C.primary, fontFamily: 'Georgia, serif' }}>歌词对轴</span>
+                </div>
+                <button onClick={saveSync} className="text-[11px] font-bold px-3 py-1 rounded-full"
+                  style={{
+                    background: `linear-gradient(135deg, ${C.primary}, ${C.accent})`,
+                    color: 'white',
+                    boxShadow: `0 2px 10px ${C.glow}50`,
+                  }}>保存</button>
               </div>
-              <button onClick={saveSync} className="text-[11px] font-bold px-3 py-1 rounded-full"
-                style={{
-                  background: `linear-gradient(135deg, ${C.primary}, ${C.accent})`,
-                  color: 'white',
-                  boxShadow: `0 2px 10px ${C.glow}50`,
-                }}>保存</button>
             </div>
 
             {/* Live progress + transport */}

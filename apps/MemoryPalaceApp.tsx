@@ -11,6 +11,21 @@ import {
     exportMemoryPalace, importMemoryPalace, isMemoryPalaceExportFile,
 } from '../utils/memoryPalace';
 import type { Anticipation, MigrationProgress, DigestResult, MemoryLink, EventBox } from '../utils/memoryPalace';
+import type { Message } from '../types';
+
+/** 手动总结面板：每页渲染多少条聊天记录（翻页，避免一次性塞几百条 DOM 卡顿） */
+const RANGE_PAGE_SIZE = 100;
+
+/** 手动总结面板：把毫秒时间戳格式化成「2026-03-20 14:30」 */
+const fmtRangeTs = (ts: number): string => {
+    if (!ts) return '';
+    try {
+        return new Date(ts).toLocaleString('zh-CN', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit',
+        });
+    } catch { return ''; }
+};
 
 /** UI 内部类型：统一描述"关联"来源（EventBox 兄弟 or 旧 MemoryLink） */
 type LinkedMemoryUI = {
@@ -25,8 +40,12 @@ type LinkedMemoryUI = {
 
 // ─── 房间图标映射 ─────────────────────────────────────
 
-/** 顶部安全区 padding：优先用 iOS safe-area-inset-top，没有则退回 40px，避免手机状态栏遮挡按钮 */
-const SAFE_PAD_TOP: React.CSSProperties['paddingTop'] = 'max(40px, calc(env(safe-area-inset-top) + 16px))';
+/**
+ * 顶部安全区 padding：用项目统一的 --safe-top（含刘海/灵动岛高度与 standalone PWA 回退），
+ * 再加 16px 呼吸间距，并保证至少 40px，避免状态栏遮挡按钮。
+ * 各视图的最外层滚动容器（自带背景）直接套这个 paddingTop，让背景顺着填到刘海下方。
+ */
+const SAFE_PAD_TOP: React.CSSProperties['paddingTop'] = 'max(40px, calc(var(--safe-top) + 16px))';
 
 /** 房间图标：用纯线条 SVG 代替 emoji，用 currentColor 跟随房间主题色 */
 const RoomIcon: React.FC<{ room: MemoryRoom; size?: number; style?: React.CSSProperties }> = ({ room, size = 20, style }) => {
@@ -439,6 +458,22 @@ export default function MemoryPalaceApp() {
     const [availableMonths, setAvailableMonths] = useState<string[]>([]);
     const [availableChunks, setAvailableChunks] = useState<{ key: string; count: number }[]>([]);
     const [selectedMonths, setSelectedMonths] = useState<Set<string>>(new Set());
+
+    // 手动总结与向量化（保底机制）：圈选聊天区间 → 走一次总结，不碰水位线
+    const [rangeModalOpen, setRangeModalOpen] = useState(false);
+    const [rangeMessages, setRangeMessages] = useState<Message[]>([]);
+    const [rangeLoading, setRangeLoading] = useState(false);
+    const [rangeQuery, setRangeQuery] = useState('');
+    const [rangePage, setRangePage] = useState(0); // 当前页（0 起）
+    const [rangeStartId, setRangeStartId] = useState<number | null>(null);
+    const [rangeEndId, setRangeEndId] = useState<number | null>(null);
+    // 点一条消息先进入"待确认"，弹出[设为起点/设为终点]，避免误触
+    const [rangePendingId, setRangePendingId] = useState<number | null>(null);
+    const [rangeRunning, setRangeRunning] = useState(false);
+    const [rangeProgress, setRangeProgress] = useState('');
+    const [rangeResult, setRangeResult] = useState<string | null>(null);
+    // 完成后的结果弹窗（逐条列出新增记忆，和水位线总结一致）
+    const [rangeResultData, setRangeResultData] = useState<import('../utils/memoryPalace/pipeline').RangeProcessResult | null>(null);
 
     // 全部记忆视图
     const [allNodes, setAllNodes] = useState<MemoryNode[]>([]);
@@ -1200,6 +1235,104 @@ export default function MemoryPalaceApp() {
             });
             addToast('SQL 已复制到剪贴板', 'success');
         } catch { addToast('复制失败', 'error'); }
+    };
+
+    // ─── 手动总结与向量化（保底机制） ───────────────────────
+    // 打开区间选择弹窗：加载该角色全部聊天记录（含已被自动总结过的）
+    const openRangeModal = async () => {
+        if (!char) return;
+        setRangeModalOpen(true);
+        setRangeLoading(true);
+        setRangeResult(null);
+        setRangeResultData(null);
+        setRangeProgress('');
+        setRangeStartId(null);
+        setRangeEndId(null);
+        setRangePendingId(null);
+        setRangeQuery('');
+        try {
+            const { DB } = await import('../utils/db');
+            // includeProcessed=true：手动保底要能重总结早已过水位线的旧消息
+            const msgs = await DB.getMessagesByCharId(char.id, true);
+            const list = (msgs || [])
+                .filter((m: Message) => m && typeof m.content === 'string' && m.content.trim().length > 0)
+                .sort((a: Message, b: Message) => a.id - b.id);
+            setRangeMessages(list);
+            // 默认翻到最后一页（最新消息），和聊天记录翻到底部一致
+            setRangePage(Math.max(0, Math.ceil(list.length / RANGE_PAGE_SIZE) - 1));
+        } catch (e: any) {
+            addToast(`加载聊天记录失败：${e?.message || e}`, 'error');
+            setRangeMessages([]);
+        } finally {
+            setRangeLoading(false);
+        }
+    };
+
+    // 点选一条消息：先进入"待确认"，由用户再点[设为起点]/[设为终点]，避免误触
+    const onTapRangeMessage = (id: number) => {
+        setRangePendingId(prev => prev === id ? null : id); // 再点同一条 = 收起菜单
+    };
+    // 从待确认菜单里确认这条是起点 / 终点
+    const confirmRangeEndpoint = (id: number, which: 'start' | 'end') => {
+        if (which === 'start') setRangeStartId(id);
+        else setRangeEndId(id);
+        setRangePendingId(null);
+    };
+
+    // 跑一次区间总结：调 processMessageRange，全程不碰水位线
+    const runRangeSummary = async () => {
+        if (!char || rangeRunning) return;
+        if (rangeStartId == null || rangeEndId == null) {
+            addToast('请先点选起点和终点', 'info');
+            return;
+        }
+        const emb = memoryPalaceConfig.embedding;
+        const llm = memoryPalaceConfig.lightLLM;
+        if (!emb?.baseUrl || !emb?.apiKey) {
+            addToast('请先配置 Embedding API', 'error');
+            return;
+        }
+        if (!llm?.baseUrl || !llm?.apiKey) {
+            addToast('请先配置副 API（用于 LLM 记忆提取）', 'error');
+            return;
+        }
+
+        const lo = Math.min(rangeStartId, rangeEndId);
+        const hi = Math.max(rangeStartId, rangeEndId);
+
+        setRangeRunning(true);
+        setRangeResult(null);
+        setRangeProgress('准备中...');
+        try {
+            const { processMessageRange } = await import('../utils/memoryPalace/pipeline');
+            const r = await processMessageRange(
+                char.id, char.name, emb, llm, lo, hi, userProfile?.name || '',
+                (s) => setRangeProgress(s),
+            );
+            if (r.error === 'lock') {
+                setRangeResult('[err]有其它记忆任务正在运行，请稍后再试');
+            } else if (r.error === 'empty') {
+                setRangeResult('[err]选定区间没有可处理的消息');
+            } else if (r.error === 'no_memories') {
+                setRangeResult('[warn]这段对话没有提取出新记忆（可能内容太碎，或都已存在于记忆里）');
+            } else if (r.error) {
+                setRangeResult(`[err]总结失败：${r.error}`);
+            } else {
+                setRangeResult(`[ok]完成！新增 ${r.stored} 条记忆${r.skipped > 0 ? `，${r.skipped} 条因重复跳过` : ''}（处理了 ${r.processedMessages} 条消息，未改动水位线）`);
+                // 弹出"记忆整理完成"结果弹窗（逐条列出新增内容，和水位线总结一致）
+                setRangeResultData(r);
+                // 复位选择，避免误点再跑同一段
+                setRangeStartId(null);
+                setRangeEndId(null);
+                setRangePendingId(null);
+            }
+            loadStats();
+        } catch (e: any) {
+            setRangeResult(`[err]总结失败：${e?.message || e}`);
+        } finally {
+            setRangeRunning(false);
+            setRangeProgress('');
+        }
     };
 
     const handleMigrate = async () => {
@@ -3130,6 +3263,357 @@ create table if not exists memory_vectors (
                         </div>
                     </div>
                 </details>
+
+                {/* 手动总结与向量化（保底机制）：圈选聊天区间走一次总结，不碰水位线 */}
+                <div style={{ marginTop: 16, background: '#f5f3ff', borderRadius: 16, padding: 16, border: '1px solid #ddd6fe' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#5b21b6', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Icon name="book" size={14} />
+                        <span>手动总结与向量化</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 12, lineHeight: 1.6 }}>
+                        像翻聊天记录一样圈出一段对话（自己点<b>起点</b>和<b>终点</b>，支持模糊搜索），单独走一次总结 + 向量化。
+                        这是给「连续总结失败、不确定向量化成没成」的<b>保底手段</b>——
+                        它<b>完全不碰水位线</b>，和全自动记忆互不干扰，重复总结同一段也不会刷出重复记忆（已开启去重）。
+                    </div>
+
+                    {rangeResult && (
+                        <div style={{ fontSize: 12, marginBottom: 8, color: rangeResult.startsWith('[ok]') ? '#16a34a' : rangeResult.startsWith('[warn]') ? '#d97706' : '#dc2626' }}>
+                            <StatusMessage msg={rangeResult} />
+                        </div>
+                    )}
+
+                    <button
+                        onClick={openRangeModal}
+                        disabled={!hasEmbeddingConfig}
+                        style={{
+                            width: '100%', padding: '10px 0', borderRadius: 12,
+                            border: 'none', fontWeight: 700, fontSize: 13,
+                            color: 'white',
+                            background: !hasEmbeddingConfig ? '#cbd5e1' : '#7c3aed',
+                            cursor: !hasEmbeddingConfig ? 'not-allowed' : 'pointer',
+                        }}
+                    >
+                        {!hasEmbeddingConfig ? '请先配置 Embedding API' : '选择聊天区间总结'}
+                    </button>
+                </div>
+
+                {/* 手动总结：区间选择弹窗（浏览聊天记录 → 点选起点/终点 → 总结） */}
+                {rangeModalOpen && char && (() => {
+                    const bothSet = rangeStartId != null && rangeEndId != null;
+                    const lo = bothSet ? Math.min(rangeStartId!, rangeEndId!) : rangeStartId;
+                    const hi = bothSet ? Math.max(rangeStartId!, rangeEndId!) : null;
+                    const selectedCount = (lo != null && hi != null)
+                        ? rangeMessages.filter(m => m.id >= lo && m.id <= hi).length
+                        : (rangeStartId != null ? 1 : 0);
+
+                    const q = rangeQuery.trim().toLowerCase();
+                    const filtered = q
+                        ? rangeMessages.filter(m => (m.content || '').toLowerCase().includes(q) || fmtRangeTs(m.timestamp).includes(q))
+                        : rangeMessages;
+                    // 翻页：每页 RANGE_PAGE_SIZE 条，避免一次渲染几百条 DOM
+                    const totalPages = Math.max(1, Math.ceil(filtered.length / RANGE_PAGE_SIZE));
+                    const page = Math.min(Math.max(0, rangePage), totalPages - 1);
+                    const pageStart = page * RANGE_PAGE_SIZE;
+                    const shown = filtered.slice(pageStart, pageStart + RANGE_PAGE_SIZE);
+
+                    return (
+                        <div
+                            style={{
+                                position: 'fixed', inset: 0, zIndex: 210,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                padding: 16,
+                                background: 'rgba(31,17,71,0.45)',
+                                backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+                                animation: 'fade-in 0.2s ease-out',
+                            }}
+                            onClick={() => { if (!rangeRunning) setRangeModalOpen(false); }}
+                        >
+                            <div
+                                onClick={e => e.stopPropagation()}
+                                style={{
+                                    width: '100%', maxWidth: 420, height: '82vh',
+                                    display: 'flex', flexDirection: 'column',
+                                    borderRadius: 24, overflow: 'hidden',
+                                    background: '#ffffff',
+                                    boxShadow: '0 25px 60px -15px rgba(124,58,237,0.4), 0 10px 30px rgba(0,0,0,0.15)',
+                                    border: '1px solid rgba(167,139,250,0.25)',
+                                }}
+                            >
+                                {/* 头部 */}
+                                <div style={{ padding: '16px 18px 12px', borderBottom: '1px solid #f1f5f9' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                                        <div style={{ fontSize: 15, fontWeight: 800, color: '#1f1147' }}>手动总结与向量化</div>
+                                        <button
+                                            onClick={() => { if (!rangeRunning) setRangeModalOpen(false); }}
+                                            style={{ border: 'none', background: 'transparent', cursor: rangeRunning ? 'not-allowed' : 'pointer', color: '#94a3b8', padding: 4 }}
+                                        >
+                                            <Icon name="x" size={18} />
+                                        </button>
+                                    </div>
+                                    <div style={{ fontSize: 11, color: '#7c3aed' }}>{char.name} · 点一条消息，再选「设为起点 / 终点」</div>
+
+                                    {/* 模糊搜索 */}
+                                    <div style={{ marginTop: 10, position: 'relative' }}>
+                                        <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
+                                            <Icon name="search" size={14} />
+                                        </span>
+                                        <input
+                                            value={rangeQuery}
+                                            onChange={e => { setRangeQuery(e.target.value); setRangePage(0); }}
+                                            placeholder="模糊搜索内容或日期（如 生日 / 2026-03）"
+                                            style={{
+                                                width: '100%', padding: '8px 10px 8px 30px', borderRadius: 10,
+                                                border: '1px solid #e2e8f0', fontSize: 12, outline: 'none', boxSizing: 'border-box',
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* 消息列表 */}
+                                <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
+                                    {rangeLoading && (
+                                        <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: 24 }}>加载聊天记录中...</div>
+                                    )}
+                                    {!rangeLoading && shown.length === 0 && (
+                                        <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: 24 }}>
+                                            {rangeMessages.length === 0 ? '这个角色还没有聊天记录' : '没有匹配的消息'}
+                                        </div>
+                                    )}
+                                    {!rangeLoading && filtered.length > RANGE_PAGE_SIZE && (
+                                        <div style={{
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                            gap: 8, padding: '6px 8px', marginBottom: 6,
+                                            background: '#faf5ff', borderRadius: 8,
+                                        }}>
+                                            <button
+                                                onClick={() => setRangePage(p => Math.max(0, p - 1))}
+                                                disabled={page <= 0}
+                                                style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 7, border: '1px solid #ddd6fe', background: page <= 0 ? '#f1f5f9' : '#fff', color: page <= 0 ? '#cbd5e1' : '#7c3aed', cursor: page <= 0 ? 'not-allowed' : 'pointer' }}
+                                            >
+                                                ‹ 更早
+                                            </button>
+                                            <span style={{ fontSize: 10, color: '#7c3aed', fontWeight: 600 }}>
+                                                第 {page + 1} / {totalPages} 页 · 共 {filtered.length} 条
+                                            </span>
+                                            <button
+                                                onClick={() => setRangePage(p => Math.min(totalPages - 1, p + 1))}
+                                                disabled={page >= totalPages - 1}
+                                                style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 7, border: '1px solid #ddd6fe', background: page >= totalPages - 1 ? '#f1f5f9' : '#fff', color: page >= totalPages - 1 ? '#cbd5e1' : '#7c3aed', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
+                                            >
+                                                更新 ›
+                                            </button>
+                                        </div>
+                                    )}
+                                    {!rangeLoading && shown.map(m => {
+                                        const isStart = m.id === rangeStartId;
+                                        const isEnd = m.id === rangeEndId;
+                                        const isPending = m.id === rangePendingId;
+                                        const inRange = lo != null && hi != null && m.id >= lo && m.id <= hi;
+                                        const isEndpoint = (lo != null && m.id === lo) || (hi != null && m.id === hi) || (rangeStartId != null && rangeEndId == null && isStart);
+                                        const who = m.role === 'user' ? '我' : m.role === 'system' ? '系统' : char.name;
+                                        const isDate = (m.metadata as any)?.source === 'date';
+                                        const preview = (m.content || '').replace(/\s+/g, ' ').trim().slice(0, 48);
+                                        return (
+                                            <div
+                                                key={m.id}
+                                                onClick={() => { if (!rangeRunning) onTapRangeMessage(m.id); }}
+                                                style={{
+                                                    padding: '8px 10px', marginBottom: 4, borderRadius: 10, cursor: rangeRunning ? 'default' : 'pointer',
+                                                    background: isEndpoint ? '#ede9fe' : isPending ? '#faf5ff' : inRange ? '#f5f3ff' : '#fff',
+                                                    border: isPending ? '1.5px solid #c4b5fd' : isEndpoint ? '1.5px solid #7c3aed' : inRange ? '1px solid #ddd6fe' : '1px solid #f1f5f9',
+                                                }}
+                                            >
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                                    <span style={{ fontSize: 10, color: '#64748b', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                                                        {isDate && (
+                                                            <span style={{ fontSize: 9, fontWeight: 700, color: '#db2777', background: '#fce7f3', borderRadius: 5, padding: '0 5px' }}>约会</span>
+                                                        )}
+                                                        {who} · {fmtRangeTs(m.timestamp)}
+                                                    </span>
+                                                    {(isStart || isEnd) && (
+                                                        <span style={{ fontSize: 9, fontWeight: 800, color: '#fff', background: '#7c3aed', borderRadius: 6, padding: '1px 6px' }}>
+                                                            {bothSet ? (m.id === lo ? '起点' : '终点') : '起点'}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div style={{ fontSize: 12, color: '#334155', marginTop: 2, lineHeight: 1.4 }}>
+                                                    {preview || '（无文本内容）'}
+                                                </div>
+
+                                                {/* 待确认菜单：点了这条才出现，避免误触直接改动起止 */}
+                                                {isPending && (
+                                                    <div style={{ display: 'flex', gap: 6, marginTop: 8 }} onClick={e => e.stopPropagation()}>
+                                                        <button
+                                                            onClick={() => confirmRangeEndpoint(m.id, 'start')}
+                                                            style={{ flex: 1, padding: '6px 0', borderRadius: 8, border: '1px solid #7c3aed', background: '#7c3aed', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                                                        >
+                                                            设为起点
+                                                        </button>
+                                                        <button
+                                                            onClick={() => confirmRangeEndpoint(m.id, 'end')}
+                                                            style={{ flex: 1, padding: '6px 0', borderRadius: 8, border: '1px solid #7c3aed', background: '#fff', color: '#7c3aed', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                                                        >
+                                                            设为终点
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setRangePendingId(null)}
+                                                            style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#94a3b8', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                                                        >
+                                                            取消
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* 底部操作 */}
+                                <div style={{ borderTop: '1px solid #f1f5f9', padding: '10px 14px 14px' }}>
+                                    {rangeRunning && rangeProgress && (
+                                        <div style={{ fontSize: 11, color: '#7c3aed', marginBottom: 8, textAlign: 'center' }}>{rangeProgress}</div>
+                                    )}
+                                    {!rangeRunning && rangeResult && (
+                                        <div style={{ fontSize: 12, marginBottom: 8, color: rangeResult.startsWith('[ok]') ? '#16a34a' : rangeResult.startsWith('[warn]') ? '#d97706' : '#dc2626' }}>
+                                            <StatusMessage msg={rangeResult} />
+                                        </div>
+                                    )}
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                                        <span style={{ fontSize: 11, color: '#64748b' }}>
+                                            {bothSet ? `已选 ${selectedCount} 条` : rangeStartId != null ? '已选起点，请再点终点' : '未选择'}
+                                        </span>
+                                        <button
+                                            onClick={() => { setRangeStartId(null); setRangeEndId(null); }}
+                                            disabled={rangeRunning || rangeStartId == null}
+                                            style={{
+                                                fontSize: 11, fontWeight: 600, color: (rangeRunning || rangeStartId == null) ? '#cbd5e1' : '#dc2626',
+                                                background: 'transparent', border: 'none',
+                                                cursor: (rangeRunning || rangeStartId == null) ? 'not-allowed' : 'pointer',
+                                            }}
+                                        >
+                                            清除选择
+                                        </button>
+                                    </div>
+                                    <button
+                                        onClick={runRangeSummary}
+                                        disabled={rangeRunning || !bothSet}
+                                        style={{
+                                            width: '100%', padding: '11px 0', borderRadius: 12,
+                                            border: 'none', fontWeight: 700, fontSize: 13, color: 'white',
+                                            background: (rangeRunning || !bothSet) ? '#cbd5e1' : '#7c3aed',
+                                            cursor: (rangeRunning || !bothSet) ? 'not-allowed' : 'pointer',
+                                        }}
+                                    >
+                                        {rangeRunning ? '总结中…请保持应用打开' : '开始总结 + 向量化'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
+
+                {/* 手动总结：完成结果弹窗（逐条列出新增记忆，和水位线总结一致） */}
+                {rangeResultData && (
+                    <div
+                        style={{
+                            position: 'fixed', inset: 0, zIndex: 220,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+                            background: 'rgba(15,23,42,0.55)',
+                            backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+                            animation: 'fade-in 0.2s ease-out',
+                        }}
+                        onClick={() => setRangeResultData(null)}
+                    >
+                        <div
+                            onClick={e => e.stopPropagation()}
+                            style={{
+                                width: '100%', maxWidth: 380, maxHeight: '82vh',
+                                display: 'flex', flexDirection: 'column', overflow: 'hidden',
+                                background: 'linear-gradient(160deg, #ffffff 0%, #f8fafc 100%)',
+                                borderRadius: 28, border: '1px solid rgba(148,163,184,0.18)',
+                                boxShadow: '0 20px 50px -20px rgba(15,23,42,0.35)',
+                            }}
+                        >
+                            <div style={{ padding: '26px 24px 14px', textAlign: 'center' }}>
+                                <div style={{
+                                    width: 54, height: 54, margin: '0 auto 12px', borderRadius: 18,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    background: 'linear-gradient(135deg, rgba(124,58,237,0.14), rgba(167,139,250,0.06))',
+                                    border: '1px solid rgba(124,58,237,0.15)', fontSize: 26,
+                                }}>🗂️</div>
+                                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#7c3aed' }}>Manual Summary</div>
+                                <div style={{ fontSize: 17, fontWeight: 800, color: '#0f172a', marginTop: 4 }}>手动总结完成</div>
+                                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                                    新增 {rangeResultData.stored} 条 · 去重跳过 {rangeResultData.skipped} 条
+                                    {rangeResultData.batches.length > 1 && ` · ${rangeResultData.batches.length} 批`}
+                                    {' · '}处理 {rangeResultData.processedMessages} 条消息
+                                </div>
+                                <div style={{ fontSize: 10, color: '#16a34a', marginTop: 2 }}>未改动水位线，与全自动记忆互不干扰</div>
+                                {rangeResultData.batches.some(b => !b.ok) && (
+                                    <div style={{ fontSize: 10, color: '#ef4444', marginTop: 2 }}>
+                                        {rangeResultData.batches.filter(b => !b.ok).map(b => `batch ${b.index} 失败`).join(', ')}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div style={{ flex: 1, overflowY: 'auto', padding: '0 18px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {rangeResultData.memories.map((m, i) => {
+                                    const roomMeta: Record<string, { label: string; color: string }> = {
+                                        living_room: { label: '客厅', color: '#f59e0b' },
+                                        bedroom: { label: '卧室', color: '#8b5cf6' },
+                                        study: { label: '书房', color: '#0ea5e9' },
+                                        user_room: { label: '用户房间', color: '#ec4899' },
+                                        self_room: { label: '自我房间', color: '#10b981' },
+                                        attic: { label: '阁楼', color: '#6366f1' },
+                                        windowsill: { label: '窗台', color: '#14b8a6' },
+                                    };
+                                    const meta = roomMeta[m.room] || { label: m.room, color: '#64748b' };
+                                    const roomLabel = getRoomLabel(m.room as any, userProfile?.name) || meta.label;
+                                    return (
+                                        <div key={i} style={{
+                                            padding: 12, borderRadius: 16,
+                                            background: 'rgba(255,255,255,0.75)', border: `1px solid ${meta.color}22`,
+                                            boxShadow: `0 2px 8px ${meta.color}14`,
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                                <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 8px', borderRadius: 999, background: `${meta.color}18`, color: meta.color }}>{roomLabel}</span>
+                                                <span style={{ fontSize: 10, color: '#94a3b8' }}>{m.mood}</span>
+                                                <span style={{ fontSize: 10, fontWeight: 700, marginLeft: 'auto', color: '#f59e0b' }}>{'★'.repeat(Math.min(m.importance, 5))}</span>
+                                            </div>
+                                            <div style={{ fontSize: 12, color: '#334155', lineHeight: 1.6 }}>{m.content}</div>
+                                            {m.tags.length > 0 && (
+                                                <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
+                                                    {m.tags.map((t, j) => (
+                                                        <span key={j} style={{ fontSize: 9, padding: '1px 6px', borderRadius: 999, background: 'rgba(148,163,184,0.15)', color: '#64748b' }}>{t}</span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                                {rangeResultData.memories.length === 0 && (
+                                    <div style={{ textAlign: 'center', fontSize: 12, color: '#94a3b8', padding: 16 }}>
+                                        本次没提取到新记忆{rangeResultData.skipped > 0 ? '（这段对话的记忆此前已存在）' : ''}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div style={{ padding: '8px 24px 22px' }}>
+                                <button
+                                    onClick={() => setRangeResultData(null)}
+                                    style={{
+                                        width: '100%', padding: '12px 0', borderRadius: 14, border: 'none',
+                                        color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                                        background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
+                                        boxShadow: '0 6px 18px -6px rgba(124,58,237,0.5)',
+                                    }}
+                                >
+                                    确认
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* 聊天记录向量化 */}
                 {/* 迁移旧记忆 */}

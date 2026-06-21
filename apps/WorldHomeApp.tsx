@@ -1877,7 +1877,8 @@ const WorldHomeApp: React.FC<{ embedded?: boolean; onFullscreen?: (full: boolean
             {/* 顶栏：内嵌进「小小窝」时，列表页只留齿轮/新建；进世界（正式开始玩）整条隐去做全屏，
                 返回靠世界视图里的浮动返回键。 */}
             {!(embedded && view === 'world') && (
-            <div className={`${embedded && view === 'list' ? 'h-12' : 'h-20'} flex items-end pb-3 px-4 shrink-0 sticky top-0 z-10`} style={{ background: headerBg }}>
+            <div className="shrink-0 sticky top-0 z-10" style={{ background: headerBg, paddingTop: embedded ? undefined : 'var(--safe-top)' }}>
+            <div className={embedded ? `${view === 'list' ? 'h-12' : 'h-20'} flex items-end pb-3 px-4` : 'flex items-center px-4 py-3'}>
                 <div className="flex items-center gap-2 w-full">
                     {!(embedded && view === 'list') && (
                         <>
@@ -1900,6 +1901,7 @@ const WorldHomeApp: React.FC<{ embedded?: boolean; onFullscreen?: (full: boolean
                         </div>
                     )}
                 </div>
+            </div>
             </div>
             )}
 

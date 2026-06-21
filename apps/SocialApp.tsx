@@ -792,8 +792,8 @@ ${identityMap}
                    We ensure this doesn't re-render on state changes like comments.
                 */}
                 <div className="flex-1 w-full h-full flex flex-col animate-slide-up relative overflow-hidden">
-                    {/* Header - Shrink 0 to stay at top, with safe-area for notch devices */}
-                    <div className="flex items-center justify-between px-4 bg-white/60 backdrop-blur-xl border-b border-white/20 shrink-0 relative z-20" style={{ paddingTop: 'max(12px, env(safe-area-inset-top))', paddingBottom: '12px' }}>
+                    {/* Header —— 自理安全区：--safe-top 让开刘海（带 iOS env 偶发返回 0 的 JS 兜底；非刘海设备保底 12px） */}
+                    <div className="flex items-center justify-between px-4 bg-white/60 backdrop-blur-xl border-b border-white/20 shrink-0 relative z-20" style={{ paddingTop: 'max(12px, var(--safe-top))', paddingBottom: '12px' }}>
                         <button onClick={() => setSelectedPost(null)} className="p-2 -m-2 active:opacity-60"><Icons.Back onClick={() => setSelectedPost(null)} /></button>
                         <div className="flex items-center gap-2">
                             <img src={selectedPost.authorAvatar} className="w-8 h-8 rounded-full object-cover border border-white/50" />
@@ -958,17 +958,19 @@ ${identityMap}
             {/* --- Create Post Modal (Full Screen Overlay) --- */}
             {isCreateOpen && (
                 <div className="absolute inset-0 z-50 bg-white flex flex-col animate-slide-up">
-                    {/* Create Header */}
-                    <div className="h-14 flex items-center justify-between px-4 bg-white sticky top-0 z-20 border-b border-slate-50">
-                        <button onClick={() => setIsCreateOpen(false)} className="text-slate-600 text-sm font-bold px-2 py-1">取消</button>
-                        <span className="text-sm font-bold text-slate-800">发布笔记</span>
-                        <button 
-                            onClick={handleCreatePost} 
-                            disabled={!newPostContent.trim()}
-                            className={`px-4 py-1.5 rounded-full text-xs font-bold text-white transition-all ${newPostContent.trim() ? 'bg-[#ff2442] shadow-md shadow-red-200' : 'bg-slate-200 text-slate-400'}`}
-                        >
-                            发布
-                        </button>
+                    {/* Create Header —— 自理安全区：外层扛 safe-top + 背景，内层保持 h-14 内容栏（同主栏，避开 border-box 吃 padding） */}
+                    <div className="sticky top-0 z-20 bg-white border-b border-slate-50" style={{ paddingTop: 'var(--safe-top)' }}>
+                        <div className="h-14 flex items-center justify-between px-4">
+                            <button onClick={() => setIsCreateOpen(false)} className="text-slate-600 text-sm font-bold px-2 py-1">取消</button>
+                            <span className="text-sm font-bold text-slate-800">发布笔记</span>
+                            <button
+                                onClick={handleCreatePost}
+                                disabled={!newPostContent.trim()}
+                                className={`px-4 py-1.5 rounded-full text-xs font-bold text-white transition-all ${newPostContent.trim() ? 'bg-[#ff2442] shadow-md shadow-red-200' : 'bg-slate-200 text-slate-400'}`}
+                            >
+                                发布
+                            </button>
+                        </div>
                     </div>
 
                     {/* Create Content */}
@@ -1008,14 +1010,18 @@ ${identityMap}
             {/* --- Main Feed View --- */}
             <div className={`flex-col h-full ${selectedPost || isCreateOpen ? 'hidden' : 'flex'}`}>
                 
-                {/* Top Nav - Glass */}
-                <div className="h-11 flex items-center justify-between px-4 sticky top-0 bg-white/60 backdrop-blur-xl z-30 border-b border-white/20">
-                    <button onClick={closeApp} className="p-1"><Icons.Back onClick={closeApp} /></button>
-                    <div className="flex gap-6 text-base font-bold text-slate-300">
-                        <button className={`${activeTab === 'home' ? 'text-slate-800 scale-110 border-b-2 border-[#ff2442] pb-1' : 'hover:text-slate-500'} transition-all`} onClick={() => setActiveTab('home')}>发现</button>
-                        <button className={`${activeTab === 'me' ? 'text-slate-800 scale-110 border-b-2 border-[#ff2442] pb-1' : 'hover:text-slate-500'} transition-all`} onClick={() => setActiveTab('me')}>我的</button>
+                {/* Top Nav - Glass —— 自理安全区：外层扛 safe-top + 背景（无固定高度，padding 正常撑开到刘海/灵动岛下），
+                    内层保持 h-11 内容栏、文字居中。不能把 paddingTop 直接加到 h-11 上：border-box 会把 padding 吃进
+                    固定高度，content-box 塌成 0，文字被挤到白条下沿、跨在白/渐变交界上被劈开。sticky 必须留在外层。 */}
+                <div className="sticky top-0 z-30 bg-white/60 backdrop-blur-xl border-b border-white/20" style={{ paddingTop: 'var(--safe-top)' }}>
+                    <div className="h-11 flex items-center justify-between px-4">
+                        <button onClick={closeApp} className="p-1"><Icons.Back onClick={closeApp} /></button>
+                        <div className="flex gap-6 text-base font-bold text-slate-300">
+                            <button className={`${activeTab === 'home' ? 'text-slate-800 scale-110 border-b-2 border-[#ff2442] pb-1' : 'hover:text-slate-500'} transition-all`} onClick={() => setActiveTab('home')}>发现</button>
+                            <button className={`${activeTab === 'me' ? 'text-slate-800 scale-110 border-b-2 border-[#ff2442] pb-1' : 'hover:text-slate-500'} transition-all`} onClick={() => setActiveTab('me')}>我的</button>
+                        </div>
+                        <button onClick={() => setShowSettings(true)} className="text-slate-800 font-bold text-sm">管理</button>
                     </div>
-                    <button onClick={() => setShowSettings(true)} className="text-slate-800 font-bold text-sm">管理</button>
                 </div>
 
                 {/* Content Area */}

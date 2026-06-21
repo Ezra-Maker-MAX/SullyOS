@@ -975,7 +975,8 @@ const ThemeMaker: React.FC = () => {
     return (
         <div className="h-full w-full bg-slate-50 flex flex-col font-light relative">
             {/* Header */}
-            <div className="h-20 bg-white/70 backdrop-blur-md flex items-end pb-3 px-4 border-b border-white/40 shrink-0 z-20 justify-between">
+            <div className="bg-white/70 backdrop-blur-md border-b border-white/40 shrink-0 z-20" style={{ paddingTop: 'var(--safe-top)' }}>
+            <div className="flex items-center px-4 py-3 justify-between">
                 <div className="flex items-center gap-2">
                     <button onClick={requestClose} className="p-2 -ml-2 rounded-full hover:bg-black/5 active:scale-90 transition-transform">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-600">
@@ -995,6 +996,7 @@ const ThemeMaker: React.FC = () => {
                         保存并应用
                     </button>
                 </div>
+            </div>
             </div>
 
             {/* Preview Area (Realistic Chat Row) */}

@@ -71,7 +71,7 @@ const CharCreatorDevApp: React.FC = () => {
 
     return (
         <div className="h-full w-full flex flex-col text-white" style={{ background: 'linear-gradient(180deg,#1a1f2e 0%,#10131c 100%)' }}>
-            <div className="flex items-center gap-2 px-4 pt-3 pb-2 shrink-0">
+            <div className="flex items-center gap-2 px-4 pb-2 shrink-0" style={{ paddingTop: 'max(0.75rem, var(--safe-top))' }}>
                 <button onClick={closeApp} className="p-1.5 -ml-1.5 rounded-full active:bg-white/10"><ArrowLeft size={22} weight="bold" /></button>
                 <Wrench size={18} weight="fill" className="text-amber-300" />
                 <span className="text-lg font-bold">捏脸部件 · 开发</span>

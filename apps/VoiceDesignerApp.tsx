@@ -400,7 +400,7 @@ const VoiceDesignerApp: React.FC = () => {
   return (
     <div className="h-full w-full bg-gradient-to-b from-violet-50 to-white flex flex-col">
       {/* Header */}
-      <header className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-white/80 backdrop-blur-sm shrink-0">
+      <header className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-white/80 backdrop-blur-sm shrink-0" style={{ paddingTop: 'max(0.75rem, var(--safe-top))' }}>
         <div>
           <h2 className="text-sm font-bold text-slate-800">捏声音</h2>
           <p className="text-[10px] text-slate-400">
