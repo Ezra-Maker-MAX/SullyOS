@@ -49,17 +49,32 @@ const friendlyError = (raw: string): string => {
   return raw || '语音识别出错了';
 };
 
+// 看门狗时长：开麦后这么久还没有任何音频/语音/结果信号，就判定这个浏览器的
+// 在线识别后端不可用（国内套壳浏览器常见：有 webkitSpeechRecognition 对象、
+// 麦克风也亮，但永远不返回结果、也不报错）。
+const STT_WATCHDOG_MS = 7000;
+
 const startWeb = (lang: string, cb: SttCallbacks): SttSession => {
   const Ctor = getWebCtor();
   if (!Ctor) throw new Error('当前浏览器不支持语音识别');
   const rec = new Ctor();
   rec.lang = lang;
   rec.interimResults = true;
-  rec.continuous = false;
+  // 持续聆听到用户手动停（贴合 UI 的「点麦克风结束」），别一遇停顿就自己断。
+  rec.continuous = true;
   rec.maxAlternatives = 1;
   let finalText = '';
   let ended = false;
+  // 是否收到过识别器「活着」的信号（音频开始 / 检测到说话 / 出结果）。
+  let gotSignal = false;
+  let watchdog: ReturnType<typeof setTimeout> | null = null;
+  const clearWatchdog = () => { if (watchdog) { clearTimeout(watchdog); watchdog = null; } };
+  const markAlive = () => { gotSignal = true; clearWatchdog(); };
+
+  rec.onaudiostart = markAlive;
+  rec.onspeechstart = markAlive;
   rec.onresult = (e: any) => {
+    markAlive();
     let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i += 1) {
       const r = e.results[i];
@@ -75,12 +90,20 @@ const startWeb = (lang: string, cb: SttCallbacks): SttSession => {
   rec.onend = () => {
     if (ended) return;
     ended = true;
+    clearWatchdog();
     const f = finalText.trim();
     if (f) cb.onFinal?.(f);
     cb.onEnd?.();
   };
   rec.start();
-  return { stop: () => { try { rec.stop(); } catch { /* ignore */ } } };
+  // 若在看门狗时限内识别器毫无生命迹象，多半是这个浏览器没有可用的在线识别
+  // 服务（套壳浏览器/缺 Google 服务的 WebView）。明确告诉用户，别让麦克风空亮。
+  watchdog = setTimeout(() => {
+    if (gotSignal || ended) return;
+    cb.onError?.('这个浏览器识别不到语音，多半不支持在线语音识别（国内套壳浏览器常见）。换 Chrome / Edge，或者直接打字吧。');
+    try { rec.stop(); } catch { /* ignore */ }
+  }, STT_WATCHDOG_MS);
+  return { stop: () => { clearWatchdog(); try { rec.stop(); } catch { /* ignore */ } } };
 };
 
 const startNative = async (lang: string, cb: SttCallbacks): Promise<SttSession> => {
