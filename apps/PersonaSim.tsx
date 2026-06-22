@@ -275,7 +275,7 @@ const PersonaSim: React.FC<Props> = ({ targetChar, onExit, openLifeLog, sim, onS
         const title = script.title || theme;
         const summary = script.summary || '';
         const digest = buildMemoryText(script);
-        const content = `【一段亲身经历 · ${title}（${theme}）】\n${digest}${summary ? `\n\n回过头想：${summary}` : ''}`;
+        const content = `【一段亲身经历 · ${title}】\n${digest}${summary ? `\n\n回过头想：${summary}` : ''}`;
         try {
             await DB.saveMessage({
                 charId: targetChar.id, role: 'assistant', type: 'sim_card', content,
@@ -953,7 +953,7 @@ export const LifeLog: React.FC<{ targetChar: CharacterProfile; onBack: () => voi
             const digest = log.memoryText ? `\n${log.memoryText}` : '';
             await DB.saveMessage({
                 charId: targetChar.id, role: 'assistant', type: 'sim_card',
-                content: `【一段亲身经历 · ${log.title}（${log.theme}）】${digest}${log.summary ? `\n\n回过头想：${log.summary}` : ''}`,
+                content: `【一段亲身经历 · ${log.title}】${digest}${log.summary ? `\n\n回过头想：${log.summary}` : ''}`,
                 metadata: { simCard: { mode: log.mode, theme: log.theme, title: log.title, summary: log.summary, ending: log.ending } },
             } as any);
             setSent(s => ({ ...s, [log.id]: true }));
