@@ -80,6 +80,10 @@ const Settings: React.FC = () => {
     apiConfig.minimaxRegion === 'overseas' ? 'overseas' : 'domestic'
   );
   const [localAceStepKey, setLocalAceStepKey] = useState(apiConfig.aceStepApiKey || '');
+  const [localTtsProvider, setLocalTtsProvider] = useState<'minimax' | 'fishaudio'>(
+    apiConfig.ttsProvider === 'fishaudio' ? 'fishaudio' : 'minimax'
+  );
+  const [localFishKey, setLocalFishKey] = useState(apiConfig.fishAudioApiKey || '');
   const [showAceStepGuide, setShowAceStepGuide] = useState(false);
   const [otherStatusMsg, setOtherStatusMsg] = useState('');
   // 高级设置（流式/温度）默认折叠 — 大多数用户不需要碰
@@ -369,6 +373,8 @@ const Settings: React.FC = () => {
       setLocalMiniMaxGroupId(apiConfig.minimaxGroupId || '');
       setLocalMiniMaxRegion(apiConfig.minimaxRegion === 'overseas' ? 'overseas' : 'domestic');
       setLocalAceStepKey(apiConfig.aceStepApiKey || '');
+      setLocalTtsProvider(apiConfig.ttsProvider === 'fishaudio' ? 'fishaudio' : 'minimax');
+      setLocalFishKey(apiConfig.fishAudioApiKey || '');
   }, [apiConfig]);
 
   const loadPreset = (preset: typeof apiPresets[0]) => {
@@ -417,6 +423,8 @@ const Settings: React.FC = () => {
       minimaxGroupId: localMiniMaxGroupId,
       minimaxRegion: localMiniMaxRegion,
       aceStepApiKey: localAceStepKey,
+      ttsProvider: localTtsProvider,
+      fishAudioApiKey: localFishKey,
     });
     setOtherStatusMsg('已保存');
     setTimeout(() => setOtherStatusMsg(''), 2000);
@@ -1279,6 +1287,39 @@ const Settings: React.FC = () => {
             </p>
 
             <div className="space-y-4">
+                <div className="group">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block pl-1">语音服务商</label>
+                    <div className="flex bg-white/50 border border-slate-200/60 rounded-xl p-1 gap-1">
+                        <button
+                            type="button"
+                            onClick={() => setLocalTtsProvider('minimax')}
+                            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${localTtsProvider === 'minimax' ? 'bg-primary text-white shadow-sm' : 'text-slate-600 active:bg-white/60'}`}
+                        >
+                            MiniMax
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setLocalTtsProvider('fishaudio')}
+                            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${localTtsProvider === 'fishaudio' ? 'bg-primary text-white shadow-sm' : 'text-slate-600 active:bg-white/60'}`}
+                        >
+                            鱼声 Fish
+                        </button>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1 pl-1">
+                        {localTtsProvider === 'fishaudio'
+                            ? '聊天语音条 / 约会 / 电话统一走鱼声（fish.audio）。角色音色在「角色 → 语音」里填 reference_id。'
+                            : '聊天语音条 / 约会 / 电话统一走 MiniMax T2A（默认）。'}
+                    </p>
+                </div>
+
+                {localTtsProvider === 'fishaudio' && (
+                    <div className="group">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block pl-1">鱼声 Fish API Key</label>
+                        <input type="password" name="fish-api-key" autoComplete="new-password" spellCheck={false} value={localFishKey} onChange={(e) => setLocalFishKey(e.target.value)} placeholder="Fish Audio API Key（fish.audio 控制台签发）" className="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-sm font-mono focus:bg-white transition-all" />
+                        <p className="text-[11px] text-slate-400 mt-1 pl-1">在 <a href="https://fish.audio/zh-CN/developers/" target="_blank" rel="noopener noreferrer" className="text-rose-500 hover:text-rose-600 font-semibold">fish.audio 开发者页</a> 拿 Key；默认模型 s2.1-pro。</p>
+                    </div>
+                )}
+
                 <div className="group">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block pl-1">MiniMax 服务器</label>
                     <div className="flex bg-white/50 border border-slate-200/60 rounded-xl p-1 gap-1">

@@ -1150,6 +1150,21 @@ ${isInitialGeneration ? `
                                    />
                                </div>
 
+                               {/* 鱼声 Fish Audio 音色：仅当全局语音服务商切到鱼声时生效（设置 → 其他 API） */}
+                               <div className="rounded-2xl border border-sky-200/60 bg-sky-50/40 p-2.5 space-y-1.5">
+                                   <div className="text-[10px] font-bold text-sky-600 uppercase tracking-widest">鱼声 Fish 音色</div>
+                                   <input
+                                       value={formData.voiceProfile?.fishReferenceId || ''}
+                                       onChange={(e) => handleChange('voiceProfile', {
+                                           ...(formData.voiceProfile || {}),
+                                           fishReferenceId: e.target.value,
+                                       })}
+                                       className="w-full bg-white rounded-2xl px-3 py-2 text-xs border border-slate-200"
+                                       placeholder="reference_id（从 fish.audio 语音库复制）"
+                                   />
+                                   <p className="text-[10px] text-slate-400">设置里语音服务商选「鱼声 Fish」后，该角色用这个 reference_id 合成；与上面的 MiniMax voice_id 各存各的，互不影响。</p>
+                               </div>
+
                                {(voiceOptions.system.length + voiceOptions.voice_cloning.length + voiceOptions.voice_generation.length) > 0 && (
                                    <div className="space-y-2 pt-1">
                                        {([
