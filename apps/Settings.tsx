@@ -1303,21 +1303,40 @@ const Settings: React.FC = () => {
             </p>
 
             <div className="space-y-4">
-                <p className="text-[11px] text-slate-500 -mt-1 pl-1 leading-relaxed">
-                    🎙️ <span className="font-semibold">语音生成</span>（聊天语音条 / 约会 / 电话）只能二选一。点 MiniMax 或鱼声任一家的「选为语音」即可切换；MiniMax 的 Key 还用于写歌 / 音色捏制等其它用途，切走也会保留。
-                </p>
-
+                {/* 语音生成：MiniMax / 鱼声 二选一（两半等宽，谁都不偏） */}
                 <div className="group">
-                    <div className="flex items-center justify-between mb-1.5 pl-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">MiniMax 服务器</label>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block pl-1">语音生成服务（二选一）</label>
+                    <div className="flex bg-white/50 border border-slate-200/60 rounded-xl p-1 gap-1">
                         <button
                             type="button"
                             onClick={() => selectTtsProvider('minimax')}
-                            className={`text-[10px] font-bold px-2.5 py-1 rounded-full border transition-all ${localTtsProvider === 'minimax' ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm' : 'bg-white/60 text-slate-400 border-slate-200 active:scale-95'}`}
+                            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${localTtsProvider === 'minimax' ? 'bg-primary text-white shadow-sm' : 'text-slate-600 active:bg-white/60'}`}
                         >
-                            {localTtsProvider === 'minimax' ? '✓ 语音生成中' : '选为语音'}
+                            MiniMax
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => selectTtsProvider('fishaudio')}
+                            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${localTtsProvider === 'fishaudio' ? 'bg-primary text-white shadow-sm' : 'text-slate-600 active:bg-white/60'}`}
+                        >
+                            鱼声 Fish
                         </button>
                     </div>
+                    <p className="text-[11px] text-slate-400 mt-1 pl-1">
+                        聊天语音条 / 约会 / 电话统一用选中的这家。MiniMax 的 Key 还用于写歌 / 音色捏制等用途，切到鱼声也会保留。
+                    </p>
+                    {localTtsProvider === 'fishaudio' && (
+                        <div className="mt-2 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200/70 px-3 py-2">
+                            <span className="text-amber-500 text-sm leading-none mt-0.5">⚠️</span>
+                            <p className="text-[11px] text-amber-700 leading-relaxed">
+                                鱼声（fish.audio）是<span className="font-semibold">海外服务，需要科学上网（梯子 / 魔法）</span>才能连得上；没挂梯子会一直合成失败。国内网络环境建议用 MiniMax。
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                <div className="group">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block pl-1">MiniMax 服务器</label>
                     <div className="flex bg-white/50 border border-slate-200/60 rounded-xl p-1 gap-1">
                         <button
                             type="button"
@@ -1353,20 +1372,11 @@ const Settings: React.FC = () => {
                     <p className="text-[11px] text-slate-400 mt-1 pl-1">如控制台给了 group_id，请填这里；会透传到 TTS 请求体和代理日志。</p>
                 </div>
 
-                {/* 鱼声 Fish Audio —— 与 MiniMax 并列的另一套语音系统，二选一 */}
-                <div className="group rounded-2xl border border-sky-200/60 bg-sky-50/30 p-3">
-                    <div className="flex items-center justify-between mb-1.5">
-                        <label className="text-[10px] font-bold text-sky-600 uppercase tracking-widest">鱼声 Fish Audio</label>
-                        <button
-                            type="button"
-                            onClick={() => selectTtsProvider('fishaudio')}
-                            className={`text-[10px] font-bold px-2.5 py-1 rounded-full border transition-all ${localTtsProvider === 'fishaudio' ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm' : 'bg-white/60 text-slate-400 border-slate-200 active:scale-95'}`}
-                        >
-                            {localTtsProvider === 'fishaudio' ? '✓ 语音生成中' : '选为语音'}
-                        </button>
-                    </div>
-                    <input type="password" name="fish-api-key" autoComplete="new-password" spellCheck={false} value={localFishKey} onChange={(e) => setLocalFishKey(e.target.value)} placeholder="Fish Audio API Key（fish.audio 控制台签发）" className="w-full bg-white border border-slate-200/60 rounded-xl px-4 py-2.5 text-sm font-mono focus:bg-white transition-all" />
-                    <p className="text-[11px] text-slate-400 mt-1 pl-1">在 <a href="https://fish.audio/zh-CN/developers/" target="_blank" rel="noopener noreferrer" className="text-sky-500 hover:text-sky-600 font-semibold">fish.audio 开发者页</a> 拿 Key；默认模型 s2.1-pro。角色音色在「角色 → 语音」里填 reference_id。</p>
+                {/* 鱼声 Fish Audio —— 与 MiniMax 对等的另一套语音系统，中性样式、不做视觉偏向 */}
+                <div className="group">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block pl-1">鱼声 Fish Audio Key</label>
+                    <input type="password" name="fish-api-key" autoComplete="new-password" spellCheck={false} value={localFishKey} onChange={(e) => setLocalFishKey(e.target.value)} placeholder="Fish Audio API Key（fish.audio 控制台签发）" className="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-sm font-mono focus:bg-white transition-all" />
+                    <p className="text-[11px] text-slate-400 mt-1 pl-1">在 <a href="https://fish.audio/zh-CN/developers/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-semibold">fish.audio 开发者页</a> 拿 Key（<span className="text-amber-600 font-medium">需梯子</span>）；默认模型 s2.1-pro。角色音色在「角色 → 语音」里填 reference_id。</p>
                 </div>
 
                 <div className="group">
