@@ -58,6 +58,15 @@ const ScheduleCard: React.FC<ScheduleCardProps> = ({
     const longPressTriggeredRef = useRef(false);
     const LONG_PRESS_MS = 500;
 
+    // 点了「还没到的时段」的播放按钮 → 在该按钮上方冒一个一闪而过的小提示
+    const [lockedHintIdx, setLockedHintIdx] = useState<number | null>(null);
+    const lockedHintTimerRef = useRef<number | null>(null);
+    const showLockedHint = (idx: number) => {
+        if (lockedHintTimerRef.current) window.clearTimeout(lockedHintTimerRef.current);
+        setLockedHintIdx(idx);
+        lockedHintTimerRef.current = window.setTimeout(() => setLockedHintIdx(null), 1800);
+    };
+
     const startLongPress = (idx: number) => {
         longPressTriggeredRef.current = false;
         if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
@@ -208,6 +217,7 @@ const ScheduleCard: React.FC<ScheduleCardProps> = ({
                         schedule.slots.map((slot, idx) => {
                             const isCurrent = idx === currentIdx;
                             const isPast = currentIdx >= 0 && idx < currentIdx;
+                            const isFuture = !isPast && !isCurrent; // 还没到的时段：按钮灰着，点了给提示
                             const isEditing = editingIdx === idx;
 
                             if (isEditing && !compact) {
@@ -314,24 +324,36 @@ const ScheduleCard: React.FC<ScheduleCardProps> = ({
                                         )}
                                     </div>
 
-                                    {/* 小剧场播放按钮：只对「已过去 / 正在进行」的时段亮起（窥视已发生的行为） */}
-                                    {!compact && onPlayTheater && (isPast || isCurrent) && (
-                                        <button
-                                            className="flex-shrink-0 mt-0.5 w-7 h-7 rounded-full flex items-center justify-center text-xs transition-all active:scale-90"
-                                            style={{
-                                                background: slot.theater ? accentHsl : 'rgba(255,255,255,0.12)',
-                                                color: slot.theater ? cardBg : contentColor,
-                                            }}
-                                            title={slot.theater ? '重看小剧场' : '窥视这一刻'}
-                                            onPointerDown={(e) => { e.stopPropagation(); cancelLongPress(); }}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                longPressTriggeredRef.current = false;
-                                                onPlayTheater(idx);
-                                            }}
-                                        >
-                                            {slot.theater ? '↻' : '▶'}
-                                        </button>
+                                    {/* 小剧场播放按钮：全程都在，已过去/正在进行的可点（▶ 生成 / ↻ 重看）；
+                                        还没到的时段灰着，点了冒个「还没到这个时间哦」的小提示。 */}
+                                    {!compact && onPlayTheater && (
+                                        <div className="relative flex-shrink-0 mt-0.5">
+                                            <button
+                                                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs transition-all ${isFuture ? 'cursor-not-allowed' : 'active:scale-90'}`}
+                                                style={{
+                                                    background: isFuture ? 'rgba(255,255,255,0.06)' : (slot.theater ? accentHsl : 'rgba(255,255,255,0.12)'),
+                                                    color: isFuture ? 'rgba(255,255,255,0.28)' : (slot.theater ? cardBg : contentColor),
+                                                }}
+                                                title={isFuture ? '还没到这个时间哦' : (slot.theater ? '重看小剧场' : '窥视这一刻')}
+                                                onPointerDown={(e) => { e.stopPropagation(); cancelLongPress(); }}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    longPressTriggeredRef.current = false;
+                                                    if (isFuture) { showLockedHint(idx); return; }
+                                                    onPlayTheater(idx);
+                                                }}
+                                            >
+                                                {slot.theater && !isFuture ? '↻' : '▶'}
+                                            </button>
+                                            {lockedHintIdx === idx && (
+                                                <div
+                                                    className="absolute right-0 bottom-full mb-1.5 z-20 whitespace-nowrap px-2 py-1 rounded-lg text-[10px] font-bold animate-fade-in pointer-events-none"
+                                                    style={{ background: 'rgba(20,16,30,0.96)', color: '#fff', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 14px rgba(0,0,0,0.4)' }}
+                                                >
+                                                    还没到这个时间哦
+                                                </div>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                             );
