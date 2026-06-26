@@ -14,7 +14,6 @@ import { runWorldEpisode, rerollWorldCharBeat } from '../utils/worldHome/engine'
 import { ChatParser } from '../utils/chatParser';
 import { safeFetchJson } from '../utils/safeApi';
 import { recordApiCall, setApiCallAmbientContext } from '../utils/apiCallLog';
-import { shouldRouteViaNativeHttp, nativeHttpFetch, shouldRouteViaWebProxy, buildWebProxyArgs, setLlmWebProxyEnabled } from '../utils/nativeHttpFetch';
 import { INSTALLED_APPS } from '../constants';
 import { normalizeCharacterImpression, normalizeCharacterDefaults } from '../utils/impression';
 import { isScheduleFeatureOn } from '../utils/scheduleGenerator';
@@ -743,24 +742,8 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           const urlStr = String(resource);
           const fetchStartedAt = Date.now();
 
-          // LLM 接口分流（聊天/模型列表等）：
-          //  1) 原生 App（Capacitor）→ 走 CapacitorHttp 原生 HTTP，天然绕开 WebView 的 CORS；
-          //  2) 网页 + 开了「本站代理」→ 改打同源 /api/llm-proxy（Vercel 等带后端的部署），
-          //     由服务端转发上游，绕过浏览器 CORS；
-          //  3) 其余 → 原样直连。
-          // 三者都不命中时（纯静态网页 / 未开代理）行为完全不变。日志/记录仍按真实上游 urlStr 记。
-          let runFetch: () => Promise<Response>;
-          if (shouldRouteViaNativeHttp(urlStr)) {
-              runFetch = () => nativeHttpFetch(resource, config);
-          } else if (shouldRouteViaWebProxy(urlStr)) {
-              const [proxyUrl, proxyInit] = buildWebProxyArgs(resource, config);
-              runFetch = () => originalFetch(proxyUrl, proxyInit);
-          } else {
-              runFetch = () => originalFetch(...args);
-          }
-
           try {
-              const response = await runFetch();
+              const response = await originalFetch(...args);
               const durationMs = Date.now() - fetchStartedAt;
 
               // 「API 调用记录」统一记录入口：所有 /chat/completions（裸 fetch + safeFetchJson
@@ -1426,10 +1409,6 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   useEffect(() => {
     setTtsProvider(apiConfig.ttsProvider);
   }, [apiConfig.ttsProvider]);
-  // 同步「本站代理」开关，让全局 fetch 拦截器决定 LLM 请求是否改打 /api/llm-proxy。
-  useEffect(() => {
-    setLlmWebProxyEnabled(apiConfig.useProxy);
-  }, [apiConfig.useProxy]);
   const userProfileRef = useRef(userProfile);
   userProfileRef.current = userProfile;
   const groupsRef = useRef(groups);

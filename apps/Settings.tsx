@@ -71,7 +71,6 @@ const Settings: React.FC = () => {
   const [localUrl, setLocalUrl] = useState(apiConfig.baseUrl);
   const [localModel, setLocalModel] = useState(apiConfig.model);
   const [localStream, setLocalStream] = useState<boolean>(apiConfig.stream === true);
-  const [localUseProxy, setLocalUseProxy] = useState<boolean>(apiConfig.useProxy === true);
   const [localTemperature, setLocalTemperature] = useState<number>(
     typeof apiConfig.temperature === 'number' ? apiConfig.temperature : 0.85
   );
@@ -415,7 +414,6 @@ const Settings: React.FC = () => {
       model: localModel,
       stream: localStream,
       temperature: localTemperature,
-      useProxy: localUseProxy,
     });
     setStatusMsg('配置已保存');
     setTimeout(() => setStatusMsg(''), 2000);
@@ -470,46 +468,29 @@ const Settings: React.FC = () => {
     if (!localUrl) { setStatusMsg('请先填写 URL'); return; }
     setIsLoadingModels(true);
     setStatusMsg('正在连接...');
-    const baseUrl = localUrl.replace(/\/+$/, '');
-    // 不同服务商鉴权头不一样：多数 OpenAI 兼容用 `Authorization: Bearer`，但有些（如 Pioneer）
-    // 用 `X-API-Key`。浏览器跨域时，请求头要在对方 CORS 预检的 Access-Control-Allow-Headers
-    // 白名单里才放行——发了对方不认的头（比如对方只允许 x-api-key 却发了 authorization）会被
-    // 预检直接挡掉，fetch 抛 TypeError「Failed to fetch」。所以这里两种鉴权头各试一次。
-    // GET 不带 body，别加 Content-Type，省掉一个非简单头、少一道预检门槛。
-    const authVariants: Record<string, string>[] = [
-        { 'Authorization': `Bearer ${localKey}` },
-        { 'X-API-Key': localKey },
-    ];
-    let lastError: any = null;
-    for (const headers of authVariants) {
-        try {
-            const response = await fetch(`${baseUrl}/models`, { method: 'GET', headers });
-            if (!response.ok) { lastError = new Error(`Status ${response.status}`); continue; }
-            const data = await safeResponseJson(response);
-            // Support various API response formats
-            const list = data.data || data.models || [];
-            if (Array.isArray(list) && list.length > 0) {
-                const models = list.map((m: any) => m.id || m);
-                setAvailableModels(models);
-                if (!models.includes(localModel)) setLocalModel(models[0]);
-                setStatusMsg(`获取到 ${models.length} 个模型`);
-                setShowModelModal(true); // Open selector immediately
-                setIsLoadingModels(false);
-                return;
-            }
-            lastError = new Error('空列表');
-        } catch (error: any) {
-            lastError = error;
-        }
+    try {
+        const baseUrl = localUrl.replace(/\/+$/, '');
+        const response = await fetch(`${baseUrl}/models`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${localKey}`, 'Content-Type': 'application/json' }
+        });
+        if (!response.ok) throw new Error(`Status ${response.status}`);
+        const data = await safeResponseJson(response);
+        // Support various API response formats
+        const list = data.data || data.models || [];
+        if (Array.isArray(list)) {
+            const models = list.map((m: any) => m.id || m);
+            setAvailableModels(models);
+            if (models.length > 0 && !models.includes(localModel)) setLocalModel(models[0]);
+            setStatusMsg(`获取到 ${models.length} 个模型`);
+            setShowModelModal(true); // Open selector immediately
+        } else { setStatusMsg('格式不兼容'); }
+    } catch (error: any) {
+        console.error(error);
+        setStatusMsg('连接失败');
+    } finally {
+        setIsLoadingModels(false);
     }
-    // 两种鉴权头都没拿到列表。最常见是浏览器跨域（CORS）被挡：服务端 curl/SDK 能拉到，但
-    // 浏览器 fetch 受同源策略限制，对方没放行本站来源就会「Failed to fetch」。不用 console.error
-    // （会被全局拦截器记成吓人的 Application 错误），给条能照做的提示并打开弹窗让用户手动填。
-    const isNetworkError = lastError?.name === 'TypeError' || /failed to fetch|load failed/i.test(lastError?.message || '');
-    console.warn('[fetchModels] 拉取模型列表失败：', lastError?.message || lastError);
-    setStatusMsg(isNetworkError ? '拉取失败（多为浏览器跨域 CORS），可手动填写' : `获取失败：${lastError?.message || '未知错误'}`);
-    setShowModelModal(true);
-    setIsLoadingModels(false);
   };
 
   const handleExport = async (mode: 'text_only' | 'media_only' | 'full') => {
@@ -1209,19 +1190,6 @@ const Settings: React.FC = () => {
                                     <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${localStream ? 'translate-x-4' : 'translate-x-0.5'}`} />
                                 </button>
                             </div>
-                            <div className="flex items-center justify-between">
-                                <div className="pr-2">
-                                    <span className="text-[10px] text-slate-400">通过本站代理 (绕过 CORS)</span>
-                                    <p className="text-[9px] text-slate-300 mt-0.5">源不开 CORS（如 Pioneer）直连报 Failed to fetch 时打开。仅 Vercel 等带后端的部署有效，GitHub Pages 纯静态无效；原生 App 无需开。</p>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setLocalUseProxy(v => !v)}
-                                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0 ${localUseProxy ? 'bg-slate-400' : 'bg-slate-200'}`}
-                                >
-                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${localUseProxy ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                                </button>
-                            </div>
                             <div>
                                 <div className="flex items-center justify-between">
                                     <span className="text-[10px] text-slate-400">温度 (Temperature)</span>
@@ -1261,7 +1229,6 @@ const Settings: React.FC = () => {
                         </span>
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-400 flex-shrink-0"><path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" /></svg>
                     </button>
-                    <p className="text-[11px] text-slate-400 mt-1 pl-1">「刷新模型列表」失败多为浏览器跨域（CORS）所致——服务端能拉到、浏览器拉不到。可打开上面的「通过本站代理」开关（Vercel 等部署）重试，或点上方直接手动填模型名 / 训练作业 ID。</p>
                 </div>
                 
                 <button onClick={handleSaveApi} className="w-full py-3 rounded-2xl font-bold text-white shadow-lg shadow-primary/20 bg-primary active:scale-95 transition-all mt-2">

@@ -180,10 +180,6 @@ export interface APIConfig {
   stream?: boolean;
   // Per-API temperature for chat / 约会 main calls. Missing → 0.85.
   temperature?: number;
-  // 通过本站同源 Serverless 代理（/api/llm-proxy）转发聊天/模型列表请求，绕过浏览器 CORS。
-  // 仅对带后端的部署（Vercel 等）有效；GitHub Pages 纯静态没有 /api，开了也没用。
-  // 缺省 → false（直连）。只在源不开 CORS（如 Pioneer）时才需要打开。
-  useProxy?: boolean;
 }
 
 export interface InstantPushConfig {
