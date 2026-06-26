@@ -562,8 +562,6 @@ const DateSession: React.FC<DateSessionProps> = ({
     // Auto-save: persist date state so refresh/close doesn't lose progress
     const stateRef = useRef<() => DateState>(buildCurrentState);
     stateRef.current = buildCurrentState;
-    const onExitRef = useRef(onExit);
-    onExitRef.current = onExit;
     const charRef = useRef(char);
     charRef.current = char;
 
@@ -590,8 +588,12 @@ const DateSession: React.FC<DateSessionProps> = ({
             window.removeEventListener('beforeunload', handleBeforeUnload);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             clearInterval(interval);
-            // Also save on React unmount (in-app navigation)
-            onExitRef.current(stateRef.current());
+            // 卸载时只把进度直接落库，绝不调用 onExit。onExit 会执行「用户主动退出」的
+            // 导航（setMode('select') + 弹「进度已保存」），而卸载在很多非用户意图的场景
+            // 都会发生 —— 尤其 React.StrictMode (dev) 的「挂载→卸载→重挂载」探测：
+            // 一进正式见面就被自己的卸载副作用导航回选择页，并弹两次「进度已保存」。
+            // 直接 DB 持久化与其它自动保存路径（beforeunload / visibilitychange / 定时）一致。
+            saveStateToDB();
         };
     }, []);
 
