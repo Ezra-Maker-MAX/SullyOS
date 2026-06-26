@@ -579,7 +579,8 @@ export const DatePrompts = {
         );
         const recentMsgs = flattenHistoryToText(apiMessages);
 
-        const baseContext = ContextBuilder.buildCoreContext(char, userProfile, false);
+        // 线下时间感知关掉 → 抑制 buildCoreContext 的时间注入，让见面真正脱离现实时间线（纯架空）
+        const baseContext = ContextBuilder.buildCoreContext(char, userProfile, false, undefined, undefined, { skipTimeAwareness: !isDateTimeAwarenessOn(char) });
 
         // 文风预设也作用于开场感知；人称（pov）刻意不作用——peek 的设计就是
         // 第三人称旁观镜头（用户还没"走过去"），人称指令只影响 session 内叙述
@@ -633,7 +634,7 @@ ${extraBlock ? `\n${extraBlock}` : ''}${isObserveOn(char) ? `\n${buildObserveBlo
 
         // 向量召回挂到 char.memoryPalaceInjection，buildCoreContext 会读取
         await injectMemoryPalace(char, allMsgs, undefined, userProfile?.name);
-        const systemPrompt = ContextBuilder.buildCoreContext(char, userProfile)
+        const systemPrompt = ContextBuilder.buildCoreContext(char, userProfile, true, undefined, undefined, { skipTimeAwareness: !isDateTimeAwarenessOn(char) })
             + buildVNModeBlock(char, userProfile?.name || '');
 
         // 每轮轮换的聚焦线索：把注意力推向不同的具体方向，相邻回复天然有差异

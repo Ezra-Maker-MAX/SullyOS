@@ -2,7 +2,7 @@
 import { CharacterProfile, UserProfile, DailySchedule } from '../types';
 import { normalizeUserImpression } from './impression';
 import { getFlowNarrativeKey, isScheduleFeatureOn } from './scheduleGenerator';
-import { resolveCharTimeZone, nowInTimeZone, tzAwarenessNote } from './timezone';
+import { resolveCharTimeZone, nowInTimeZone, tzAwarenessNote, interactionGapNote } from './timezone';
 
 /**
  * Memory Central
@@ -107,6 +107,12 @@ export const ContextBuilder = {
             skipWorldbookIds?: Set<string>;
             headerOverride?: string;
         },
+        timeOptions?: {
+            /** 传入「最后一次和用户互动的时间戳」→ 统一注入「距离上次联系多久」（受 timeAwarenessEnabled 控制）。 */
+            lastInteractionTs?: number;
+            /** 抑制整段时间感知（当前时间/时差/距上次联系）。见面纯架空（dateTimeAwarenessEnabled=false）时用。 */
+            skipTimeAwareness?: boolean;
+        },
     ): string => {
         let context = `${groupOptions?.headerOverride ?? '[System: Roleplay Configuration]'}\n\n`;
 
@@ -122,7 +128,8 @@ export const ContextBuilder = {
         // 统一在 buildCoreContext 注入，让所有调用方（私聊/查手机/人际关系/通话/约会…）都知道"现在"。
         // 自定义时区（异国恋等）：开启后这里的"当前时间"按角色所在时区折算，并附时差提示，
         // 让查手机/人际关系/通话等所有直连 buildCoreContext 的路径都拿到正确的本地时间。
-        if (char.timeAwarenessEnabled !== false) {
+        // skipTimeAwareness：见面纯架空时由调用方传入，彻底抑制时间注入（修「线下时间感知」关掉后仍漏时间）。
+        if (char.timeAwarenessEnabled !== false && !timeOptions?.skipTimeAwareness) {
             const charTz = resolveCharTimeZone(char);
             const now = nowInTimeZone(charTz);
             const h = now.getHours();
@@ -136,6 +143,10 @@ export const ContextBuilder = {
             context += `现在是 ${dateStr} ${dayNames[now.getDay()]} ${timeOfDay} ${timeStr}。请据此自然地拥有真实的时间观念（早晚作息、工作日/周末、距离上次互动多久等），不要凭空假设时间。\n`;
             const tzNote = tzAwarenessNote(charTz);
             if (tzNote) context += `${tzNote.trim()}\n`;
+            // 距离上次联系多久（统一口径）：传了 lastInteractionTs 才注入。
+            // 让查手机/人际关系等无内联消息流的路径，也像聊天一样知道「用户多久没联系我了」。
+            const gapNote = interactionGapNote(timeOptions?.lastInteractionTs);
+            if (gapNote) context += gapNote;
             context += `\n`;
         }
 

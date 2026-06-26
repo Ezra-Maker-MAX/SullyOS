@@ -71,3 +71,22 @@ export const tzAwarenessNote = (tz?: string): string => {
         + `对方（用户）可能在不同的时区，你们之间存在时差——聊天时把这点考虑进去`
         + `（比如你这边已是深夜要睡了，对方那边也许才下午）。\n`;
 };
+
+/**
+ * 「距离上次互动多久」统一口径（供 buildCoreContext 注入，查手机/人际关系等无内联消息流的
+ * 路径共用同一份措辞，替代各 App 各写一份的 getTimeGapHint）。
+ * 纯时长，与时区无关（间隔是绝对差值）。lastTs 为空返回空串。
+ * 聊天内联那份（ChatPrompts.getTimeGapHint）刻意保留：它贴在最后一条消息后、带深夜判断，位置语义更好。
+ */
+export const interactionGapNote = (lastTs?: number, nowTs: number = Date.now()): string => {
+    if (!lastTs) return '';
+    const diffMs = nowTs - lastTs;
+    if (diffMs < 0) return '';
+    const mins = Math.floor(diffMs / 60000);
+    const hours = Math.floor(diffMs / 3600000);
+    const days = Math.floor(hours / 24);
+    if (mins < 5) return `⌛ 你和对方刚刚还在联系。\n`;
+    const span = mins < 60 ? `${mins} 分钟` : hours < 24 ? `${hours} 小时` : `${days} 天`;
+    const feel = days >= 1 ? '已经有一阵子没联系了' : '不久前刚联系过';
+    return `⌛ 距离你和对方上次联系，已经过去 ${span}（${feel}）——请把这种体感自然带入当下的状态与心情。\n`;
+};

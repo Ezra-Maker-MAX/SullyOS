@@ -370,21 +370,6 @@ const CheckPhone: React.FC = () => {
         addToast(`已安装 ${newAppName}`, 'success');
     };
 
-    // Calculate Time Gap
-    const getTimeGapHint = (lastMsgTimestamp: number | undefined): string => {
-        if (!lastMsgTimestamp) return '这是初次见面。';
-        const now = Date.now();
-        const diffMs = now - lastMsgTimestamp;
-        const diffMins = Math.floor(diffMs / (1000 * 60));
-        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-        const diffDays = Math.floor(diffHours / 24);
-
-        if (diffMins < 5) return '你们刚刚还在聊天。';
-        if (diffMins < 60) return `距离上次互动只有 ${diffMins} 分钟。`;
-        if (diffHours < 24) return `距离上次互动已经过了 ${diffHours} 小时。`;
-        return `距离上次互动已经过了 ${diffDays} 天。`;
-    };
-
     // --- Core Generation Logic ---
     const handleGenerate = async (type: string, customPrompt?: string, layout?: LayoutId) => {
         if (!targetChar || !apiConfig.apiKey) {
@@ -395,11 +380,14 @@ const CheckPhone: React.FC = () => {
 
         try {
             await injectMemoryPalace(targetChar);
-            const context = ContextBuilder.buildCoreContext(targetChar, userProfile, true);
             const msgs = await DB.getMessagesByCharId(targetChar.id);
-
             const lastMsg = msgs[msgs.length - 1];
-            const timeGap = getTimeGapHint(lastMsg?.timestamp);
+
+            // 「距离上次联系多久」交给 buildCoreContext 统一注入（受时间感知开关管控、口径与聊天/见面一致）
+            const context = ContextBuilder.buildCoreContext(
+                targetChar, userProfile, true, undefined, undefined,
+                { lastInteractionTs: lastMsg?.timestamp },
+            );
 
             // 聊天/通讯录类按 chatapp 的上下文设置（默认 500）取，其它 App 维持轻量 50 条
             const recentWindow = (type === 'chat' || type === 'contacts')
@@ -487,7 +475,7 @@ ${layoutHint[layout || 'generic']}`;
                 }
             }
 
-            const fullPrompt = `${context}\n\n### [Current Status]\n时间距离上次互动: ${timeGap}\n\n### [Recent Chat Context]\n${recentMsgs}\n\n### [Task]\n${promptInstruction}\n请根据[Current Status]和人设调整生成内容的时间戳和情绪。如果很久没聊天，记录可能是近期的独处状态；如果刚聊过，记录可能与聊天内容相关。`;
+            const fullPrompt = `${context}\n\n### [Recent Chat Context]\n${recentMsgs}\n\n### [Task]\n${promptInstruction}\n请结合上面的「当前时间 / 距离上次联系」和人设调整生成内容的时间戳和情绪。如果很久没联系，记录可能是近期的独处状态；如果刚聊过，记录可能与聊天内容相关。`;
 
             const response = await fetch(`${apiConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
                 method: 'POST',

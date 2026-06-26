@@ -214,7 +214,19 @@ async function buildSpeakerContext(
     } catch {
         /* 记忆宫殿失败不阻塞对话 */
     }
-    return ContextBuilder.buildCoreContext(speaker, user, true);
+    // 让角色在和联系人对话时，也意识到「距离上次和用户联系多久了」（统一走 buildCoreContext）
+    const lastInteractionTs = await lastUserInteractionTs(speaker.id);
+    return ContextBuilder.buildCoreContext(speaker, user, true, undefined, undefined, { lastInteractionTs });
+}
+
+/** 取该角色与用户最后一次互动的时间戳（最近一条消息）。失败/无消息返回 undefined。 */
+async function lastUserInteractionTs(charId: string): Promise<number | undefined> {
+    try {
+        const recent = await DB.getRecentMessagesByCharId(charId, 1);
+        return recent[recent.length - 1]?.timestamp;
+    } catch {
+        return undefined;
+    }
 }
 
 export interface RealConversationResult {
@@ -455,7 +467,8 @@ export async function runNpcConversation(
     p: RunNpcConversationParams,
 ): Promise<{ detail: string; learnedNew: string }> {
     const rounds = Math.max(1, Math.min(8, p.rounds ?? 4));
-    const ctxHost = ContextBuilder.buildCoreContext(p.host, p.user, true);
+    const hostLastTs = await lastUserInteractionTs(p.host.id);
+    const ctxHost = ContextBuilder.buildCoreContext(p.host, p.user, true, undefined, undefined, { lastInteractionTs: hostLastTs });
 
     const prompt = `${ctxHost}
 
