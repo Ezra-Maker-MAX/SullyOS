@@ -152,12 +152,13 @@ export const ChatPrompts = {
                     const realtimeContext = await RealtimeContextManager.buildFullContext(config);
                     return `\n${realtimeContext}\n`;
                 }
-                const time = RealtimeContextManager.getTimeContext();
+                // 基础当前时间已由 ContextBuilder.buildCoreContext 统一注入（受 timeAwarenessEnabled 控制）；
+                // 这里只在关闭天气/新闻时补一条"今日特殊节日"，不再重复注入时间，避免双份。
                 const specialDates = RealtimeContextManager.checkSpecialDates();
-                let s = `\n### 【当前时间】\n`;
-                s += `${time.dateStr} ${time.dayOfWeek} ${time.timeOfDay} ${time.timeStr}\n`;
-                if (specialDates.length > 0) s += `今日特殊: ${specialDates.join('、')}\n`;
-                return s;
+                if (specialDates.length > 0 && char.timeAwarenessEnabled !== false) {
+                    return `\n### 【今日特殊】\n${specialDates.join('、')}\n`;
+                }
+                return '';
             } catch (e) {
                 console.error('Failed to inject realtime context:', e);
                 return '';

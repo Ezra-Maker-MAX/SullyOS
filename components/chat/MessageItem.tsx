@@ -1828,6 +1828,41 @@ const MessageItem = React.memo(({
     if (m.type === 'phone_card') {
         const pc: any = m.metadata?.phoneCard || {};
         const timeStr = new Date(m.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+
+        // 人际关系变动卡片（用户在查手机里删/拉黑了角色的好友）
+        if (pc.kind === 'relationship') {
+            const isBlock = pc.action === 'blocked';
+            const rAccent = isBlock ? '#fca5a5' : '#fb7185';
+            const card = (
+                <div className="w-64">
+                    <div className="relative rounded-2xl overflow-hidden border shadow-[0_8px_24px_rgba(45,20,30,0.45)]"
+                        style={{ borderColor: 'rgba(251,113,133,0.3)', background: 'linear-gradient(160deg,#2a1620 0%,#1d1018 55%,#130a0f 100%)' }}>
+                        <div className="absolute -top-7 -right-5 w-24 h-24 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle,rgba(251,113,133,.3),transparent 70%)' }} />
+                        <div className="relative px-3 pt-2.5 pb-2 flex items-center gap-2 border-b" style={{ borderColor: 'rgba(251,113,133,0.18)' }}>
+                            <span className="text-sm leading-none">{isBlock ? '🚫' : '💔'}</span>
+                            <div className="flex-1 min-w-0">
+                                <div className="text-[9px] tracking-[0.25em] font-bold uppercase" style={{ color: rAccent }}>人际关系 · 关系变动</div>
+                                <div className="text-[12px] text-white/90 font-semibold truncate">{pc.title || '好友关系变动'}</div>
+                            </div>
+                            <span className="text-[9px] text-white/35">{timeStr}</span>
+                        </div>
+                        <div className="relative px-3 py-2.5">
+                            <p className="text-[12px] leading-[1.6] text-white/70 whitespace-pre-wrap">
+                                <span className="font-semibold" style={{ color: rAccent }}>{pc.by || '对方'}</span> 把你和
+                                <span className="font-semibold text-white/90">「{pc.contactName || '某人'}」</span>
+                                的好友关系{isBlock ? '拉黑' : '删除'}了。
+                            </p>
+                        </div>
+                        <div className="relative px-3 py-1.5 border-t flex items-center justify-between" style={{ borderColor: 'rgba(251,113,133,0.16)' }}>
+                            <span className="text-[9px] italic text-white/40">你察觉到是 TA 动的手</span>
+                            <span className="text-[9px] font-bold tracking-wide" style={{ color: rAccent }}>来自查手机</span>
+                        </div>
+                    </div>
+                </div>
+            );
+            return commonLayout(card);
+        }
+
         const accent = '#7dd3fc';
         const isChat = pc.kind === 'chat';
         const card = (

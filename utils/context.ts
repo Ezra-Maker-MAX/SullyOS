@@ -117,6 +117,21 @@ export const ContextBuilder = {
         context += `  (注意: 这个备注是用户对你的称呼或印象，可能包含比喻。如果备注内容（如“快乐小狗”）与你的核心设定冲突，请以核心设定为准，不要真的扮演成动物，除非核心设定里写了你是动物。)\n`;
         context += `- 核心性格/指令:\n${char.systemPrompt || '你是一个温柔、拟人化的AI伴侣。'}\n\n`;
 
+        // 1a. 真实时间感知 (Time Awareness) — 跟随 timeAwarenessEnabled 设置，默认开启。
+        // 统一在 buildCoreContext 注入，让所有调用方（私聊/查手机/人际关系/通话/约会…）都知道"现在"。
+        if (char.timeAwarenessEnabled !== false) {
+            const now = new Date();
+            const h = now.getHours();
+            const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+            const timeOfDay =
+                h < 5 ? '凌晨' : h < 9 ? '早晨' : h < 12 ? '上午' : h < 14 ? '中午'
+                : h < 17 ? '下午' : h < 19 ? '傍晚' : h < 22 ? '晚上' : '深夜';
+            const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
+            const timeStr = `${h.toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            context += `### 当前时间 (Now)\n`;
+            context += `现在是 ${dateStr} ${dayNames[now.getDay()]} ${timeOfDay} ${timeStr}。请据此自然地拥有真实的时间观念（早晚作息、工作日/周末、距离上次互动多久等），不要凭空假设时间。\n\n`;
+        }
+
         // 1b. 自我领悟词条 (Self Insights) — 消化过程中反刍产生的常驻自我认知
         // 像情绪底色一样影响角色的行为和感受，注入在角色设定紧下方
         if (char.selfInsights && char.selfInsights.length > 0) {

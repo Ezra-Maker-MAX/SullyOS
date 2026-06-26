@@ -31,7 +31,8 @@
 | **虚构约束** | `allowFictionalContacts` 关掉后，生成只取真实角色、丢弃所有 NPC —— TA 只和神经链接里的角色来往 | `CheckPhone.toggleAllowFictional`、`handleGenerate` 的 `fictionRule` |
 | **真角色双向对话** | **双 LLM**：A 用 A 的 context 发、B 用 **B 自己的 context + 记忆宫殿(query=A 名) + B 的 contextLimit** 回。默认 **1 个往返 = A 发 1 次 + B 回 1 次 = 正好 2 次 LLM 调用**（`rounds` 可调）。好感变化折进各自回复末尾的 `[[Δ:+N]]`，解析后剥掉，**不再额外调用**。镜像进 B 的 `records`；**B 私聊仅当 B 自己 `sendToChat !== false`** 才写。好感 -100..100，跌破 -60 角色自动删友、升过 +60 自动加回，变动播报进机主私聊 | `utils/relationshipChat.ts:runRealConversation`、`CheckPhone.handleRealConversation` / `commitConversationSide` |
 | **虚构 NPC 对话** | 机主按人设脑补出不存在的人，单 LLM 分饰两角生成聊天脚本（不镜像、不涉及真实角色） | `utils/relationshipChat.ts:runNpcConversation`、`CheckPhone.handleNpcConversation` |
-| **用户删好友 → char 知情** | 用户在查手机里手动删好友/拉黑时，往机主私聊落一条 `role:'system'` 提示，让角色察觉「是用户干的」。角色自身的好感驱动增删则照常自发发生 | `CheckPhone.handleSetContactStatus` |
+| **用户删好友 → char 知情** | 用户在查手机里手动删好友/拉黑时，往机主私聊落一张 **`phone_card` 关系变动卡片**（`kind:'relationship'`，💔/🚫）：聊天里渲染成卡片、`content` 又带进角色上下文，让角色察觉「是用户干的」。角色自身的好感驱动增删则照常自发发生 | `CheckPhone.handleSetContactStatus`、`MessageItem.tsx` phone_card `relationship` 分支 |
+| **真实时间感知** | 当前真实日期/星期/时段/时间统一在 `ContextBuilder.buildCoreContext` 注入，受 `char.timeAwarenessEnabled` 控制（**默认开**）。所有走 buildCoreContext 的路径（私聊/查手机/人际关系/通话/约会…）都有时间观念；关掉则全部不注入 | `utils/context.ts` buildCoreContext「当前时间」块 |
 
 ## 真假甄别怎么做的
 

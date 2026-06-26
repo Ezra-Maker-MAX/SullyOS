@@ -625,13 +625,27 @@ Format:
 
     const handleSetContactStatus = (contact: PhoneContact, status: PhoneContact['status']) => {
         mutateContacts(cs => cs.map(c => c.id === contact.id ? { ...c, status } : c));
+        // 用户手动删/拉黑 → 落一张可解析的「关系变动」卡片：聊天里渲染成卡片，
+        // content 又带进角色上下文，让 TA 察觉是用户干的。
         if (targetChar && (status === 'deleted' || status === 'blocked')) {
-            const verb = status === 'deleted' ? '删掉了' : '拉黑了';
+            const verb = status === 'deleted' ? '删除' : '拉黑';
             DB.saveMessage({
                 charId: targetChar.id,
-                role: 'system',
-                type: 'text',
-                content: `[人际关系] ${userProfile.name} 在偷看你手机时，把你和「${contact.name}」的好友关系${verb}。你能察觉到是 TA 干的。`,
+                role: 'assistant',
+                type: 'phone_card',
+                content: `[人际关系变动] ${userProfile.name} 在偷看你手机时，把你和「${contact.name}」的好友关系${verb}了。你察觉到是 TA 干的。`,
+                metadata: {
+                    phoneCard: {
+                        app: '人际关系',
+                        kind: 'relationship',
+                        action: status,          // 'deleted' | 'blocked'
+                        actor: 'user',
+                        by: userProfile.name,
+                        contactName: contact.name,
+                        title: `好友被${verb}`,
+                        detail: `${userProfile.name} 把你和「${contact.name}」${verb}了。`,
+                    },
+                },
             } as any);
         }
         addToast(status === 'deleted' ? '已删好友' : status === 'blocked' ? '已拉黑' : status === 'friend' ? '已加好友' : '已更新', 'success');
