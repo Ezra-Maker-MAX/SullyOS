@@ -249,6 +249,7 @@ const CheckPhone: React.FC = () => {
     // Chat Detail State
     const [selectedChatRecord, setSelectedChatRecord] = useState<PhoneEvidence | null>(null);
     const chatEndRef = useRef<HTMLDivElement>(null);
+    const contactEndRef = useRef<HTMLDivElement>(null);
 
     // 人际关系系统 State
     const [selectedContact, setSelectedContact] = useState<PhoneContact | null>(null);
@@ -264,6 +265,8 @@ const CheckPhone: React.FC = () => {
     const [showFictionHelp, setShowFictionHelp] = useState(false);
     // 好感拖动草稿（拖动时即时显示，松手才落库，避免狂写 DB）
     const [affinityDraft, setAffinityDraft] = useState<number | null>(null);
+    // 联系人「资料抽屉」（点头像/…打开）——备注、了解、好感、绑定、关系操作都收在这里，主界面只剩聊天
+    const [showProfile, setShowProfile] = useState(false);
 
     // Custom App Creation State
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -366,6 +369,14 @@ const CheckPhone: React.FC = () => {
             }
         }
     }, [selectedChatRecord?.detail, activeAppId]);
+
+    // 联系人聊天主体：进入/有新内容时滚到最新（像真聊天打开就在底部）
+    useEffect(() => {
+        if (activeAppId === 'contact_detail' && contactEndRef.current) {
+            const container = contactEndRef.current.parentElement;
+            if (container) container.scrollTop = container.scrollHeight;
+        }
+    }, [activeAppId, selectedContact?.id, records, isLoading]);
 
     // 智能体会话：续写 / 进入时滚到底
     useEffect(() => {
@@ -1993,7 +2004,7 @@ B) **跳出剧情打一句全角括号 OOC**：对面掉链子 / 崩人设 / 太
                         const dimmed = c.status === 'deleted' || c.status === 'blocked';
                         const av = contactAvatar(c);
                         return (
-                            <div key={c.id} onClick={() => { setSelectedContact(c); setNoteDraft(c.note || ''); setEditingNote(false); setConvExpanded(false); setAffinityDraft(null); setActiveAppId('contact_detail'); }}
+                            <div key={c.id} onClick={() => { setSelectedContact(c); setNoteDraft(c.note || ''); setEditingNote(false); setConvExpanded(false); setAffinityDraft(null); setShowProfile(false); setActiveAppId('contact_detail'); }}
                                 className={`group relative flex items-center gap-3.5 rounded-2xl p-3.5 bg-white/[0.035] border border-white/[0.06] active:scale-[0.99] transition cursor-pointer animate-fade-in ${dimmed ? 'opacity-45' : ''}`}>
                                 {av ? (
                                     <img src={av} alt="" className="w-12 h-12 rounded-2xl object-cover shrink-0" />
@@ -2322,127 +2333,62 @@ B) **跳出剧情打一句全角括号 OOC**：对面掉链子 / 崩人设 / 太
         const av = contactAvatar(c);
         const rec = records.find(r => r.type === 'chat' && (r.contactId === c.id || normName(r.title) === normName(c.name)));
         const parsed = rec ? parseTranscript(rec.detail).map(t => ({ isMe: t.isMe, content: t.text })) : [];
+        const CAP = 50;
+        const hidden = convExpanded ? 0 : Math.max(0, parsed.length - CAP);
+        const shown = hidden > 0 ? parsed.slice(-CAP) : parsed;
+        const statusLabel = c.status === 'friend' ? '好友' : c.status === 'deleted' ? '已删除' : c.status === 'blocked' ? '已拉黑' : '待定';
+        const aff = affinityDraft ?? c.affinity;
+        const commitAff = () => { if (affinityDraft != null) { handleSetAffinity(c, affinityDraft); setAffinityDraft(null); } };
+        const closeProfile = () => { setShowProfile(false); setEditingNote(false); };
+        const avatarNode = (size: string, txt: string) => av
+            ? <img src={av} alt="" className={`${size} rounded-2xl object-cover shrink-0`} />
+            : <div className={`${size} rounded-2xl flex items-center justify-center shrink-0 text-white font-semibold ${txt}`} style={{ background: `linear-gradient(135deg, ${accent}40, ${accent}10)` }}>{c.name[0]}</div>;
         return (
             <SubAppShell>
-                <TermHeader title={contactDisplayName(c)} sub={badge.label} accent={accent} onBack={() => setActiveAppId('contacts')}
-                    right={<button onClick={() => askConfirm({
-                        title: '彻底移除该联系人？',
-                        desc: c.kind === 'real' && c.linkedCharId
-                            ? `会把「${c.name}」连同 TA 的聊天记录、私聊里的卡片一起删除；绑定的真实角色那边的镜像联系人和记录也一并清除（绑错了就用这个清干净）。`
-                            : `会把「${c.name}」连同 TA 的聊天记录、私聊里的卡片一起彻底删除。`,
-                        confirmLabel: '彻底移除', danger: true, onConfirm: () => handleRemoveContact(c),
-                    })} className="text-rose-300/80 active:scale-90 transition"><Trash size={18} weight="bold" /></button>} />
-                <div className="flex-1 overflow-y-auto px-4 pt-1 no-scrollbar pb-28 overscroll-contain space-y-3">
-                    {/* 关系卡 */}
-                    <div className="rounded-2xl p-4 bg-white/[0.035] border border-white/[0.06]">
-                        <div className="flex items-center gap-3 mb-2.5">
-                            {av ? (
-                                <img src={av} alt="" className="w-11 h-11 rounded-2xl object-cover shrink-0" />
-                            ) : (
-                                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-white font-semibold"
-                                    style={{ background: `linear-gradient(135deg, ${accent}40, ${accent}10)` }}>{c.name[0]}</div>
-                            )}
-                            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full" style={{ color: badge.color, background: `${badge.color}1f` }}>{badge.icon}{badge.label}</span>
-                            {c.identity && <span className="text-[11px] text-white/55">{c.identity}</span>}
-                            <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] text-white/55">{c.status === 'friend' ? '好友' : c.status === 'deleted' ? '已删除' : c.status === 'blocked' ? '已拉黑' : '待定'}</span>
-                        </div>
-                        {(() => {
-                            const aff = affinityDraft ?? c.affinity;
-                            const commit = () => { if (affinityDraft != null) { handleSetAffinity(c, affinityDraft); setAffinityDraft(null); } };
-                            return (
-                                <div className="flex items-center gap-2.5">
-                                    <span className="text-[11px] text-white/45 shrink-0">好感</span>
-                                    <input
-                                        type="range" min={-100} max={100} step={1} value={aff}
-                                        onChange={(e) => setAffinityDraft(parseInt(e.target.value, 10))}
-                                        onPointerUp={commit} onTouchEnd={commit} onMouseUp={commit} onBlur={commit} onKeyUp={commit}
-                                        aria-label="好感度"
-                                        className="flex-1 h-2 cursor-pointer bg-transparent"
-                                        style={{ accentColor: affColor(aff) }}
-                                    />
-                                    <span className="text-[12px] font-bold tabular-nums shrink-0 w-9 text-right" style={{ color: affColor(aff) }}>{aff > 0 ? '+' : ''}{aff}</span>
-                                </div>
-                            );
-                        })()}
-                        {/* 绑定状态 + 改绑入口（甄别/绑定错了在这改，保留对话与备注） */}
-                        <button onClick={() => setShowRebindModal(true)}
-                            className="mt-3 w-full flex items-center gap-2 rounded-xl px-3 py-2 bg-white/[0.04] border border-white/[0.07] active:scale-[0.99] transition">
-                            <LinkSimple size={13} weight="bold" className="shrink-0 text-white/50" />
-                            <span className="text-[11px] text-white/55 flex-1 text-left truncate">
-                                {isReal ? `绑定真实角色：${linkedCharOf(c)?.name || '已绑定'}` : '虚构联系人（未绑定真实角色）'}
-                            </span>
-                            <span className="text-[11px] font-semibold shrink-0" style={{ color: accent }}>改绑定</span>
+                {/* 聊天式顶栏：返回 + 可点的头像/名字（进资料） */}
+                <div className="shrink-0 z-20">
+                    <StatusStrip />
+                    <div className="h-14 flex items-center gap-2 px-3">
+                        <button onClick={() => setActiveAppId('contacts')} className="w-9 h-9 -ml-0.5 rounded-full flex items-center justify-center text-white/80 bg-white/[0.05] border border-white/[0.08] active:scale-90 transition shrink-0">
+                            <CaretLeft size={18} weight="bold" />
+                        </button>
+                        <button onClick={() => setShowProfile(true)} className="flex items-center gap-2.5 flex-1 min-w-0 active:opacity-70 transition">
+                            {avatarNode('w-9 h-9', 'text-base')}
+                            <div className="min-w-0 text-left">
+                                <div className="text-[14px] font-semibold text-white truncate leading-tight">{contactDisplayName(c)}</div>
+                                <div className="text-[9.5px] text-white/40 leading-tight">{badge.label} · 轻触头像看资料</div>
+                            </div>
+                        </button>
+                        <button onClick={() => setShowProfile(true)} aria-label="资料" className="w-9 h-9 rounded-full flex items-center justify-center text-white/70 bg-white/[0.05] border border-white/[0.08] active:scale-90 transition shrink-0">
+                            <DotsThree size={20} weight="bold" />
                         </button>
                     </div>
+                </div>
 
-                    {/* 备注 */}
-                    <div className="rounded-2xl p-4 bg-white/[0.035] border border-white/[0.06]">
-                        <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-[10px] tracking-[0.2em] uppercase text-white/40">备注</span>
-                            <button onClick={() => { setEditingNote(!editingNote); setNoteDraft(c.note || ''); }} className="text-white/50 active:scale-90 transition"><PencilSimple size={14} weight="bold" /></button>
-                        </div>
-                        {editingNote ? (
-                            <div className="space-y-2">
-                                <textarea value={noteDraft} onChange={e => setNoteDraft(e.target.value)} placeholder="机主对 TA 的备注…"
-                                    className="w-full h-16 bg-white/[0.05] border border-white/[0.08] rounded-xl p-2.5 text-[12px] text-white/90 resize-none" />
-                                <button onClick={() => handleSaveNote(c)} className="w-full py-2 rounded-xl text-[12px] font-semibold text-white" style={{ background: accent }}>保存</button>
-                            </div>
-                        ) : (
-                            <p className="text-[12.5px] text-white/70 leading-relaxed whitespace-pre-wrap">{c.note || '（无备注）'}</p>
-                        )}
-                    </div>
-
-                    {/* 了解：TA 在相处中逐渐认识到的——来自对方说法，未必属实，与备注(事实)分开。聊出新认识会自动累积 */}
-                    {c.learned && c.learned.trim() && (
-                        <div className="rounded-2xl p-4 bg-white/[0.02] border border-white/[0.06] border-dashed">
-                            <div className="flex items-center justify-between mb-1.5">
-                                <span className="text-[10px] tracking-[0.2em] uppercase text-white/40">了解 · {targetChar.name} 眼中的 TA</span>
-                                <button onClick={() => mutateContacts(cs => cs.map(x => x.id === c.id ? { ...x, learned: '' } : x))}
-                                    className="text-white/40 active:scale-90 transition" aria-label="清空了解"><Trash size={13} weight="bold" /></button>
-                            </div>
-                            <p className="text-[12px] text-white/55 leading-relaxed whitespace-pre-wrap">{c.learned}</p>
-                            <p className="text-[9.5px] text-white/30 mt-1.5">※ 来自相处的印象，是 TA 自己说的，未必属实</p>
+                {/* 聊天主体 */}
+                <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 no-scrollbar overscroll-contain min-h-0">
+                    {parsed.length === 0 && !isLoading && (
+                        <div className="flex flex-col items-center justify-center h-full gap-2.5 text-white/30">
+                            <ChatCircleDots size={42} weight="light" />
+                            <span className="text-[12px] tracking-wide">{isReal ? '还没聊过 · 在下面发起对话' : '还没偷看过 · 下面偷看一段'}</span>
                         </div>
                     )}
-
-                    {/* 对话预览：超过 50 条默认折叠，点「展开更早的」才显示之前的记录 */}
-                    {parsed.length > 0 && (() => {
-                        const CAP = 50;
-                        const hidden = convExpanded ? 0 : Math.max(0, parsed.length - CAP);
-                        const shown = hidden > 0 ? parsed.slice(-CAP) : parsed;
-                        return (
-                            <div className="rounded-2xl p-3 bg-white/[0.025] border border-white/[0.06] space-y-2.5">
-                                {/* 这段对话的清空入口：生成错位/不满意时一键抹掉重来 */}
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[10px] tracking-[0.2em] uppercase text-white/35">对话 · {parsed.length}</span>
-                                    <button onClick={() => askConfirm({
-                                        title: '清空这段对话？',
-                                        desc: c.kind === 'real' && c.linkedCharId
-                                            ? `会把「${c.name}」这段聊天记录清掉（对方手机里的镜像也一并清除），之后可重新生成。`
-                                            : `会把「${c.name}」这段聊天记录清掉，之后可重新生成。`,
-                                        confirmLabel: '清空', danger: true, onConfirm: () => handleClearContactConversation(c),
-                                    })}
-                                        className="flex items-center gap-1 text-[10.5px] text-rose-300/70 active:scale-90 transition">
-                                        <Trash size={12} weight="bold" /> 清空对话
-                                    </button>
-                                </div>
-                                {hidden > 0 && (
-                                    <button onClick={() => setConvExpanded(true)}
-                                        className="w-full py-2 rounded-xl text-[11.5px] font-semibold text-white/55 bg-white/[0.04] border border-white/[0.07] active:scale-[0.99] transition">
-                                        ▲ 展开更早的 {hidden} 条消息
-                                    </button>
-                                )}
-                                {shown.map((m, i) => (
-                                    <div key={i} className={`flex items-end gap-2 ${m.isMe ? 'justify-end' : 'justify-start'}`}>
-                                        {!m.isMe && av && <img src={av} alt="" className="w-6 h-6 rounded-lg object-cover shrink-0" />}
-                                        <div className={`px-3 py-2 rounded-2xl max-w-[78%] text-[12.5px] leading-relaxed break-words ${m.isMe ? 'text-white rounded-br-md' : 'bg-white/[0.07] text-white/90 border border-white/[0.06] rounded-bl-md'}`}
-                                            style={m.isMe ? { background: `linear-gradient(135deg, ${accent}, ${accent}bb)` } : undefined}>{m.content}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        );
-                    })()}
-
+                    {hidden > 0 && (
+                        <button onClick={() => setConvExpanded(true)}
+                            className="w-full py-2 rounded-xl text-[11.5px] font-semibold text-white/55 bg-white/[0.04] border border-white/[0.07] active:scale-[0.99] transition">
+                            ▲ 展开更早的 {hidden} 条消息
+                        </button>
+                    )}
+                    {shown.map((m, i) => (
+                        <div key={i} className={`flex items-end gap-2 ${m.isMe ? 'justify-end' : 'justify-start'}`}>
+                            {!m.isMe && (av
+                                ? <img src={av} alt="" className="w-7 h-7 rounded-xl object-cover shrink-0" />
+                                : <div className="w-7 h-7 rounded-xl flex items-center justify-center text-[11px] text-white shrink-0" style={{ background: `linear-gradient(135deg, ${accent}40, ${accent}10)` }}>{c.name[0]}</div>)}
+                            <div className={`px-3.5 py-2.5 rounded-2xl max-w-[76%] text-[13px] leading-relaxed break-words ${m.isMe ? 'text-white rounded-br-md' : 'bg-white/[0.07] text-white/90 border border-white/[0.06] rounded-bl-md'}`}
+                                style={m.isMe ? { background: `linear-gradient(135deg, ${accent}, ${accent}bb)` } : undefined}>{m.content}</div>
+                            {m.isMe && <img src={targetChar.avatar} alt="" className="w-7 h-7 rounded-xl object-cover shrink-0" />}
+                        </div>
+                    ))}
                     {isLoading && (
                         <div className="flex justify-center py-3">
                             <div className="flex gap-1.5">
@@ -2452,10 +2398,11 @@ B) **跳出剧情打一句全角括号 OOC**：对面掉链子 / 崩人设 / 太
                             </div>
                         </div>
                     )}
+                    <div ref={contactEndRef} />
                 </div>
 
-                {/* 操作区 */}
-                <div className="shrink-0 w-full p-4 pb-6 space-y-2">
+                {/* 底部：发起 / 偷看对话（像聊天的输入区） */}
+                <div className="shrink-0 w-full p-4 pb-6">
                     {isReal ? (
                         <button onClick={() => handleRealConversation(c)} disabled={isLoading}
                             className="w-full py-3 rounded-2xl text-[13px] font-semibold text-white active:scale-[0.99] transition flex items-center justify-center gap-2"
@@ -2468,24 +2415,125 @@ B) **跳出剧情打一句全角括号 OOC**：对面掉链子 / 崩人设 / 太
                             <ChatCircleDots size={16} weight="fill" /> {rec ? '偷看后续对话' : '偷看对话'}
                         </button>
                     )}
-                    <div className="flex gap-2">
-                        {c.status !== 'friend' && (
-                            <button onClick={() => handleSetContactStatus(c, 'friend')} className="flex-1 py-2.5 rounded-xl text-[12px] font-semibold text-emerald-200 bg-emerald-400/15 border border-emerald-400/20 active:scale-[0.99] transition flex items-center justify-center gap-1.5"><UserPlus size={14} weight="bold" /> 加好友</button>
-                        )}
-                        {c.status === 'friend' && (
-                            <button onClick={() => askConfirm({
-                                title: `删除好友「${c.name}」？`, desc: `${targetChar.name} 会察觉是你在偷看 TA 手机时删的。`,
-                                confirmLabel: '删好友', danger: true, onConfirm: () => handleSetContactStatus(c, 'deleted'),
-                            })} className="flex-1 py-2.5 rounded-xl text-[12px] font-semibold text-rose-200 bg-rose-400/15 border border-rose-400/20 active:scale-[0.99] transition flex items-center justify-center gap-1.5"><Trash size={14} weight="bold" /> 删好友</button>
-                        )}
-                        {c.status !== 'blocked' && (
-                            <button onClick={() => askConfirm({
-                                title: `拉黑「${c.name}」？`, desc: `${targetChar.name} 会察觉是你在偷看 TA 手机时拉黑的。`,
-                                confirmLabel: '拉黑', danger: true, onConfirm: () => handleSetContactStatus(c, 'blocked'),
-                            })} className="flex-1 py-2.5 rounded-xl text-[12px] font-semibold text-white/60 bg-white/[0.05] border border-white/[0.08] active:scale-[0.99] transition flex items-center justify-center gap-1.5"><Prohibit size={14} weight="bold" /> 拉黑</button>
-                        )}
-                    </div>
                 </div>
+
+                {/* 资料抽屉：点头像/… 滑出，备注 / 了解 / 好感 / 绑定 / 关系操作都在这里 */}
+                {showProfile && (
+                    <div className="absolute inset-0 z-[80] flex flex-col justify-end">
+                        <div className="absolute inset-0 bg-black/55 animate-fade-in" onClick={closeProfile} />
+                        <div className="relative max-h-[90%] overflow-y-auto no-scrollbar rounded-t-[28px] border-t border-white/[0.1] px-5 pt-3 pb-9 animate-slide-up space-y-3.5"
+                            style={{ background: 'radial-gradient(120% 80% at 50% 0%, #1a1d27 0%, #101218 70%)' }}>
+                            <div className="w-10 h-1 rounded-full bg-white/20 mx-auto" />
+                            {/* 头部资料 */}
+                            <div className="flex flex-col items-center gap-2 pt-1">
+                                {avatarNode('w-20 h-20', 'text-2xl')}
+                                <div className="text-[17px] font-semibold text-white text-center">{contactDisplayName(c)}</div>
+                                <div className="flex items-center gap-2 flex-wrap justify-center">
+                                    <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full" style={{ color: badge.color, background: `${badge.color}1f` }}>{badge.icon}{badge.label}</span>
+                                    {c.identity && <span className="text-[11px] text-white/55">{c.identity}</span>}
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] text-white/55">{statusLabel}</span>
+                                </div>
+                            </div>
+
+                            {/* 好感（可拖） */}
+                            <div className="rounded-2xl p-4 bg-white/[0.04] border border-white/[0.06]">
+                                <div className="flex items-center gap-2.5">
+                                    <span className="text-[11px] text-white/45 shrink-0">好感</span>
+                                    <input type="range" min={-100} max={100} step={1} value={aff}
+                                        onChange={(e) => setAffinityDraft(parseInt(e.target.value, 10))}
+                                        onPointerUp={commitAff} onTouchEnd={commitAff} onMouseUp={commitAff} onBlur={commitAff} onKeyUp={commitAff}
+                                        aria-label="好感度" className="flex-1 h-2 cursor-pointer bg-transparent" style={{ accentColor: affColor(aff) }} />
+                                    <span className="text-[12px] font-bold tabular-nums shrink-0 w-9 text-right" style={{ color: affColor(aff) }}>{aff > 0 ? '+' : ''}{aff}</span>
+                                </div>
+                            </div>
+
+                            {/* 备注（事实，可编辑） */}
+                            <div className="rounded-2xl p-4 bg-white/[0.04] border border-white/[0.06]">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[10px] tracking-[0.2em] uppercase text-white/40">备注</span>
+                                    <button onClick={() => { setEditingNote(!editingNote); setNoteDraft(c.note || ''); }} className="text-white/50 active:scale-90 transition"><PencilSimple size={14} weight="bold" /></button>
+                                </div>
+                                {editingNote ? (
+                                    <div className="space-y-2">
+                                        <textarea value={noteDraft} onChange={e => setNoteDraft(e.target.value)} placeholder="机主对 TA 的备注（事实/关系）…"
+                                            className="w-full h-16 bg-white/[0.05] border border-white/[0.08] rounded-xl p-2.5 text-[12px] text-white/90 resize-none" />
+                                        <button onClick={() => handleSaveNote(c)} className="w-full py-2 rounded-xl text-[12px] font-semibold text-white" style={{ background: accent }}>保存</button>
+                                    </div>
+                                ) : (
+                                    <p className="text-[12.5px] text-white/70 leading-relaxed whitespace-pre-wrap">{c.note || '（无备注）'}</p>
+                                )}
+                            </div>
+
+                            {/* 了解（印象，未必属实，自动累积） */}
+                            <div className="rounded-2xl p-4 bg-white/[0.02] border border-white/[0.06] border-dashed">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[10px] tracking-[0.2em] uppercase text-white/40">了解 · {targetChar.name} 眼中的 TA</span>
+                                    {c.learned && c.learned.trim() && (
+                                        <button onClick={() => mutateContacts(cs => cs.map(x => x.id === c.id ? { ...x, learned: '' } : x))}
+                                            className="text-white/40 active:scale-90 transition" aria-label="清空了解"><Trash size={13} weight="bold" /></button>
+                                    )}
+                                </div>
+                                {c.learned && c.learned.trim() ? (
+                                    <>
+                                        <p className="text-[12px] text-white/55 leading-relaxed whitespace-pre-wrap">{c.learned}</p>
+                                        <p className="text-[9.5px] text-white/30 mt-1.5">※ 来自相处的印象，是 TA 自己说的，未必属实</p>
+                                    </>
+                                ) : (
+                                    <p className="text-[11.5px] text-white/30 leading-relaxed">还没聊出对 TA 的了解 · 多聊几句会自动累积（未必属实）</p>
+                                )}
+                            </div>
+
+                            {/* 绑定 / 改绑 */}
+                            <button onClick={() => { closeProfile(); setShowRebindModal(true); }}
+                                className="w-full flex items-center gap-2 rounded-xl px-3 py-2.5 bg-white/[0.04] border border-white/[0.07] active:scale-[0.99] transition">
+                                <LinkSimple size={13} weight="bold" className="shrink-0 text-white/50" />
+                                <span className="text-[11px] text-white/55 flex-1 text-left truncate">
+                                    {isReal ? `绑定真实角色：${linkedCharOf(c)?.name || '已绑定'}` : '虚构联系人（未绑定真实角色）'}
+                                </span>
+                                <span className="text-[11px] font-semibold shrink-0" style={{ color: accent }}>改绑定</span>
+                            </button>
+
+                            {/* 关系操作 */}
+                            <div className="flex gap-2">
+                                {c.status !== 'friend' && (
+                                    <button onClick={() => handleSetContactStatus(c, 'friend')} className="flex-1 py-2.5 rounded-xl text-[12px] font-semibold text-emerald-200 bg-emerald-400/15 border border-emerald-400/20 active:scale-[0.99] transition flex items-center justify-center gap-1.5"><UserPlus size={14} weight="bold" /> 加好友</button>
+                                )}
+                                {c.status === 'friend' && (
+                                    <button onClick={() => { closeProfile(); askConfirm({
+                                        title: `删除好友「${c.name}」？`, desc: `${targetChar.name} 会察觉是你在偷看 TA 手机时删的。`,
+                                        confirmLabel: '删好友', danger: true, onConfirm: () => handleSetContactStatus(c, 'deleted'),
+                                    }); }} className="flex-1 py-2.5 rounded-xl text-[12px] font-semibold text-rose-200 bg-rose-400/15 border border-rose-400/20 active:scale-[0.99] transition flex items-center justify-center gap-1.5"><Trash size={14} weight="bold" /> 删好友</button>
+                                )}
+                                {c.status !== 'blocked' && (
+                                    <button onClick={() => { closeProfile(); askConfirm({
+                                        title: `拉黑「${c.name}」？`, desc: `${targetChar.name} 会察觉是你在偷看 TA 手机时拉黑的。`,
+                                        confirmLabel: '拉黑', danger: true, onConfirm: () => handleSetContactStatus(c, 'blocked'),
+                                    }); }} className="flex-1 py-2.5 rounded-xl text-[12px] font-semibold text-white/60 bg-white/[0.05] border border-white/[0.08] active:scale-[0.99] transition flex items-center justify-center gap-1.5"><Prohibit size={14} weight="bold" /> 拉黑</button>
+                                )}
+                            </div>
+
+                            {/* 危险操作：清空对话 / 彻底移除 */}
+                            <div className="flex gap-2">
+                                {rec && (
+                                    <button onClick={() => { closeProfile(); askConfirm({
+                                        title: '清空这段对话？',
+                                        desc: c.kind === 'real' && c.linkedCharId
+                                            ? `会把「${c.name}」这段聊天记录清掉（对方手机里的镜像也一并清除），之后可重新生成。`
+                                            : `会把「${c.name}」这段聊天记录清掉，之后可重新生成。`,
+                                        confirmLabel: '清空', danger: true, onConfirm: () => handleClearContactConversation(c),
+                                    }); }} className="flex-1 py-2.5 rounded-xl text-[12px] font-semibold text-white/60 bg-white/[0.05] border border-white/[0.08] active:scale-[0.99] transition flex items-center justify-center gap-1.5"><ChatCircle size={14} weight="bold" /> 清空对话</button>
+                                )}
+                                <button onClick={() => { closeProfile(); askConfirm({
+                                    title: '彻底移除该联系人？',
+                                    desc: c.kind === 'real' && c.linkedCharId
+                                        ? `会把「${c.name}」连同 TA 的聊天记录、私聊里的卡片一起删除；绑定的真实角色那边的镜像联系人和记录也一并清除（绑错了就用这个清干净）。`
+                                        : `会把「${c.name}」连同 TA 的聊天记录、私聊里的卡片一起彻底删除。`,
+                                    confirmLabel: '彻底移除', danger: true, onConfirm: () => handleRemoveContact(c),
+                                }); }} className="flex-1 py-2.5 rounded-xl text-[12px] font-semibold text-rose-200 bg-rose-400/15 border border-rose-400/20 active:scale-[0.99] transition flex items-center justify-center gap-1.5"><Trash size={14} weight="bold" /> 彻底移除</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </SubAppShell>
         );
     };
