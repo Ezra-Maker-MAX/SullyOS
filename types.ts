@@ -172,6 +172,17 @@ export interface APIConfig {
   // 鱼声默认模型（s2.1-pro / s2-pro / s1）。缺省 → 's2.1-pro'。
   // 角色 voiceProfile.fishModel 优先于这个全局默认。
   fishAudioModel?: string;
+  // 用户自定义「语音表演指南」——注入到角色 system prompt、教模型怎么写出有情绪的语音台词。
+  // minimax / fishaudio：聊天 + 电话共用，按 TTS 服务商分别存（两家标记体系不同，不能共用一份）；
+  //   留空 → 用内置默认（minimaxTts.VOICE_ACTING_GUIDE / fishAudioTts.FISH_VOICE_ACTING_GUIDE）。
+  // dateVoice：见面（DateApp）专用的 [v:xxx] 语音情绪规则，与服务商无关、单独一份；
+  //   留空 → 用内置默认（datePrompts.DATE_VOICE_GUIDE）。
+  // 在「设置 → 其他 API → 语音提示词」里二次编辑，存 localStorage（随 apiConfig）。
+  voicePrompts?: {
+    minimax?: string;
+    fishaudio?: string;
+    dateVoice?: string;
+  };
   // Replicate token (r8_xxx) for ACE-Step song generation in 写歌 App.
   aceStepApiKey?: string;
   model: string;

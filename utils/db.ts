@@ -845,6 +845,35 @@ export const DB = {
     transaction.objectStore(STORE_EMOJIS).delete(name);
   },
 
+  // 表情包重命名: name 是主键, 改名 = 删旧键 + 写新键 (保留 url / categoryId)。
+  // 新名为空、与旧名相同、或已被占用都会抛错, 让调用方提示用户。
+  renameEmoji: async (oldName: string, newName: string): Promise<void> => {
+    const trimmed = newName.trim();
+    if (!trimmed) throw new Error('表情包名称不能为空');
+    if (trimmed === oldName) return;
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_EMOJIS, 'readwrite');
+      const store = tx.objectStore(STORE_EMOJIS);
+      const getReq = store.get(oldName);
+      getReq.onsuccess = () => {
+        const record = getReq.result as Emoji | undefined;
+        if (!record) { reject(new Error('未找到要重命名的表情包')); return; }
+        const dupReq = store.get(trimmed);
+        dupReq.onsuccess = () => {
+          if (dupReq.result) { reject(new Error('已存在同名表情包')); return; }
+          store.delete(oldName);
+          store.put({ ...record, name: trimmed });
+        };
+        dupReq.onerror = () => reject(dupReq.error);
+      };
+      getReq.onerror = () => reject(getReq.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  },
+
   getEmojiCategories: async (): Promise<EmojiCategory[]> => {
       const db = await openDB();
       return new Promise((resolve, reject) => {

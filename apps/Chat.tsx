@@ -81,6 +81,7 @@ const Chat: React.FC = () => {
     const [categories, setCategories] = useState<EmojiCategory[]>([]);
     const [activeCategory, setActiveCategory] = useState<string>('default');
     const [newCategoryName, setNewCategoryName] = useState('');
+    const [newEmojiName, setNewEmojiName] = useState(''); // 表情包重命名输入框
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const lastMsgIdRef = useRef<number | null>(null);
@@ -92,7 +93,7 @@ const Chat: React.FC = () => {
     // Reply Logic
     const [replyTarget, setReplyTarget] = useState<Message | null>(null);
 
-    const [modalType, setModalType] = useState<'none' | 'transfer' | 'emoji-import' | 'chat-settings' | 'message-options' | 'edit-message' | 'delete-emoji' | 'delete-category' | 'add-category' | 'history-manager' | 'archive-settings' | 'prompt-editor' | 'category-options' | 'category-visibility' | 'schedule' | 'chrome-css'>('none');
+    const [modalType, setModalType] = useState<'none' | 'transfer' | 'emoji-import' | 'chat-settings' | 'message-options' | 'edit-message' | 'delete-emoji' | 'delete-category' | 'add-category' | 'history-manager' | 'archive-settings' | 'prompt-editor' | 'category-options' | 'category-visibility' | 'emoji-options' | 'rename-emoji' | 'schedule' | 'chrome-css'>('none');
     const [scheduleData, setScheduleData] = useState<DailySchedule | null>(null);
     // 小剧场（窥视演出）：正在播放的时段索引（null = 未打开），以及生成中标志
     const [theaterSlotIdx, setTheaterSlotIdx] = useState<number | null>(null);
@@ -1076,6 +1077,7 @@ const Chat: React.FC = () => {
             case 'emoji-import': setModalType('emoji-import'); break;
             case 'send-emoji': if (payload) handleSendText(payload.url, 'emoji'); break;
             case 'delete-emoji-req': setSelectedEmoji(payload); setModalType('delete-emoji'); break;
+            case 'emoji-options': setSelectedEmoji(payload); setModalType('emoji-options'); break;
             case 'add-category': setModalType('add-category'); break;
             case 'select-category': setActiveCategory(payload); break;
             case 'category-options': setSelectedCategory(payload); setModalType('category-options'); break;
@@ -2041,6 +2043,24 @@ const Chat: React.FC = () => {
         }
     };
 
+    const handleRenameEmoji = async () => {
+        if (!selectedEmoji || Array.isArray(selectedEmoji)) return;
+        const newName = newEmojiName.trim();
+        if (!newName) { addToast('表情包名称不能为空', 'error'); return; }
+        if (newName === selectedEmoji.name) { setModalType('none'); setSelectedEmoji(null); return; }
+        try {
+            await DB.renameEmoji(selectedEmoji.name, newName);
+            addToast('表情包名称已修改', 'success');
+            await loadEmojiData();
+            setModalType('none');
+            setSelectedEmoji(null);
+            setNewEmojiName('');
+        } catch (err: any) {
+            console.error('Failed to rename emoji:', err);
+            addToast(err?.message || '修改名称失败', 'error');
+        }
+    };
+
     // --- Batch Selection ---
     const handleEnterSelectionMode = () => {
         if (selectedMessage) {
@@ -2543,6 +2563,7 @@ const Chat: React.FC = () => {
                 allHistoryMessages={allHistoryMessages}
                 
                 newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName} onAddCategory={handleAddCategory}
+                newEmojiName={newEmojiName} setNewEmojiName={setNewEmojiName} onRenameEmoji={handleRenameEmoji}
                 selectedCategory={selectedCategory}
 
                 onTransfer={() => { if(transferAmt) handleSendText(`[转账]`, 'transfer', { amount: transferAmt, note: transferNote.trim() || undefined, status: 'pending' }); setTransferNote(''); setModalType('none'); }}

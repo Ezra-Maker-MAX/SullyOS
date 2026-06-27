@@ -129,9 +129,10 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
             isLongPressTriggered.current = true;
             // Trigger action
             if (type === 'emoji') {
+                // 不在批量选择态时, 长按单个表情弹出操作菜单 (修改名称 / 删除)。
+                // 批量删除仍可通过右上角铅笔按钮进入多选态。
                 if (!emojiSelectionMode) {
-                    setEmojiSelectionMode(true);
-                    setSelectedEmojis([item]);
+                    onPanelAction('emoji-options', item);
                 }
             } else {
                 onPanelAction('category-options', item);

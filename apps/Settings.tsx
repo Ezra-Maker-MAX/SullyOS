@@ -12,6 +12,9 @@ import { XhsMcpClient } from '../utils/xhsMcpClient';
 import { getMcdToken, setMcdToken as saveMcdToken, isMcdEnabled, setMcdEnabled as saveMcdEnabled, testMcdConnection, resetMcdSession } from '../utils/mcdMcpClient';
 import { getLuckinToken, setLuckinToken as saveLuckinToken, isLuckinEnabled, setLuckinEnabled as saveLuckinEnabled, testLuckinConnection, resetLuckinSession } from '../utils/luckinMcpClient';
 import { getProxyWorkerUrl, setProxyWorkerUrl, DEFAULT_PROXY_WORKER } from '../utils/proxyWorker';
+import { VOICE_ACTING_GUIDE } from '../utils/minimaxTts';
+import { FISH_VOICE_ACTING_GUIDE } from '../utils/fishAudioTts';
+import { DATE_VOICE_GUIDE } from '../utils/datePrompts';
 import { Sun, Newspaper, NotePencil, Notebook, Book, ForkKnife, Coffee } from '@phosphor-icons/react';
 import { loadPushConfig, savePushConfig, registerScheduleOnWorker, startHeartbeat, stopHeartbeat, isPushConfigAvailable, ensureSubscribed, sendTestPush, getPushDiagnostics, resetSubscription, deepResetSubscription, type PushDiagnostics } from '../utils/proactivePushConfig';
 import { ProactiveChat } from '../utils/proactiveChat';
@@ -85,6 +88,11 @@ const Settings: React.FC = () => {
   );
   const [localFishKey, setLocalFishKey] = useState(apiConfig.fishAudioApiKey || '');
   const [localFishModel, setLocalFishModel] = useState(apiConfig.fishAudioModel || 's2.1-pro');
+  // 自定义语音表演指南（留空 → 用内置默认）。按服务商分两份。
+  const [localVoicePromptMinimax, setLocalVoicePromptMinimax] = useState(apiConfig.voicePrompts?.minimax || '');
+  const [localVoicePromptFish, setLocalVoicePromptFish] = useState(apiConfig.voicePrompts?.fishaudio || '');
+  const [localVoicePromptDate, setLocalVoicePromptDate] = useState(apiConfig.voicePrompts?.dateVoice || '');
+  const [showVoicePrompts, setShowVoicePrompts] = useState(false);
   const [showAceStepGuide, setShowAceStepGuide] = useState(false);
   const [otherStatusMsg, setOtherStatusMsg] = useState('');
   // 高级设置（流式/温度）默认折叠 — 大多数用户不需要碰
@@ -377,6 +385,9 @@ const Settings: React.FC = () => {
       setLocalTtsProvider(apiConfig.ttsProvider === 'fishaudio' ? 'fishaudio' : 'minimax');
       setLocalFishKey(apiConfig.fishAudioApiKey || '');
       setLocalFishModel(apiConfig.fishAudioModel || 's2.1-pro');
+      setLocalVoicePromptMinimax(apiConfig.voicePrompts?.minimax || '');
+      setLocalVoicePromptFish(apiConfig.voicePrompts?.fishaudio || '');
+      setLocalVoicePromptDate(apiConfig.voicePrompts?.dateVoice || '');
   }, [apiConfig]);
 
   const loadPreset = (preset: typeof apiPresets[0]) => {
@@ -428,6 +439,11 @@ const Settings: React.FC = () => {
       ttsProvider: localTtsProvider,
       fishAudioApiKey: localFishKey,
       fishAudioModel: localFishModel,
+      voicePrompts: {
+        minimax: localVoicePromptMinimax.trim() ? localVoicePromptMinimax : undefined,
+        fishaudio: localVoicePromptFish.trim() ? localVoicePromptFish : undefined,
+        dateVoice: localVoicePromptDate.trim() ? localVoicePromptDate : undefined,
+      },
     });
     setOtherStatusMsg('已保存');
     setTimeout(() => setOtherStatusMsg(''), 2000);
@@ -445,6 +461,11 @@ const Settings: React.FC = () => {
       aceStepApiKey: localAceStepKey,
       fishAudioApiKey: localFishKey,
       fishAudioModel: localFishModel,
+      voicePrompts: {
+        minimax: localVoicePromptMinimax.trim() ? localVoicePromptMinimax : undefined,
+        fishaudio: localVoicePromptFish.trim() ? localVoicePromptFish : undefined,
+        dateVoice: localVoicePromptDate.trim() ? localVoicePromptDate : undefined,
+      },
       ttsProvider: provider,
     });
     addToast(provider === 'fishaudio' ? '语音生成已切到鱼声 Fish' : '语音生成已切到 MiniMax', 'success');
@@ -461,6 +482,11 @@ const Settings: React.FC = () => {
       fishAudioApiKey: localFishKey,
       ttsProvider: localTtsProvider,
       fishAudioModel: model,
+      voicePrompts: {
+        minimax: localVoicePromptMinimax.trim() ? localVoicePromptMinimax : undefined,
+        fishaudio: localVoicePromptFish.trim() ? localVoicePromptFish : undefined,
+        dateVoice: localVoicePromptDate.trim() ? localVoicePromptDate : undefined,
+      },
     });
   };
 
@@ -1415,6 +1441,80 @@ const Settings: React.FC = () => {
                             );
                         })}
                     </div>
+                </div>
+
+                {/* 语音提示词（高级）—— 自定义注入角色 system prompt 的「语音表演指南」，按服务商分两份 */}
+                <div className="group rounded-2xl border border-slate-200/70 bg-slate-50/60 p-3">
+                    <button
+                        type="button"
+                        onClick={() => setShowVoicePrompts(v => !v)}
+                        className="w-full flex items-center justify-between text-left"
+                    >
+                        <span>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">语音提示词（高级 · 可自定义）</span>
+                            <span className="block text-[11px] text-slate-400 mt-0.5">教模型怎么写出有情绪、有停顿的语音台词（聊天 / 电话 / 见面三处）。留空则用内置默认。</span>
+                        </span>
+                        <span className={`shrink-0 ml-2 text-slate-400 transition-transform ${showVoicePrompts ? 'rotate-180' : ''}`}>▾</span>
+                    </button>
+
+                    {showVoicePrompts && (
+                        <div className="mt-3 space-y-4">
+                            <p className="text-[11px] text-amber-600 leading-relaxed pl-0.5">
+                                ⚠️ 这是给模型的格式说明（停顿标记 / 情绪标签 / 动作词等），不是角色人设。改坏了可能导致语音标记解析失败——拿不准就点「清空」回到默认。改完记得点下面的「保存」。
+                            </p>
+
+                            {([
+                                ['minimax', 'MiniMax 语音指南', localVoicePromptMinimax, setLocalVoicePromptMinimax, VOICE_ACTING_GUIDE, '聊天 + 电话 · MiniMax 引擎时生效'] as const,
+                                ['fishaudio', '鱼声 Fish 语音指南', localVoicePromptFish, setLocalVoicePromptFish, FISH_VOICE_ACTING_GUIDE, '聊天 + 电话 · 鱼声引擎时生效'] as const,
+                                ['dateVoice', '见面（约会）语音情绪', localVoicePromptDate, setLocalVoicePromptDate, DATE_VOICE_GUIDE, '见面专用 [v:xxx] 规则 · 角色开了见面语音时生效，与引擎无关'] as const,
+                            ]).map(([key, title, value, setValue, def, hint]) => {
+                                const active = localTtsProvider === key;
+                                const usingDefault = !value.trim();
+                                return (
+                                    <div key={key}>
+                                        <div className="flex items-center justify-between mb-1 pl-0.5">
+                                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                                {title}
+                                                {active && <span className="ml-1.5 text-[9px] font-bold text-primary normal-case tracking-normal">· 当前引擎</span>}
+                                            </label>
+                                            <span className={`text-[10px] font-medium ${usingDefault ? 'text-slate-400' : 'text-primary'}`}>
+                                                {usingDefault ? '使用内置默认' : '已自定义'}
+                                            </span>
+                                        </div>
+                                        <p className="text-[10px] text-slate-400 mb-1.5 pl-0.5">{hint}</p>
+                                        <textarea
+                                            value={value}
+                                            onChange={(e) => setValue(e.target.value)}
+                                            placeholder="留空 → 使用内置默认。点下方「载入默认模板」可把内置文案填进来再改。"
+                                            rows={6}
+                                            spellCheck={false}
+                                            className="w-full bg-white/60 border border-slate-200/60 rounded-xl px-3 py-2.5 text-xs font-mono leading-relaxed focus:bg-white transition-all resize-y"
+                                        />
+                                        <div className="flex items-center justify-between mt-1.5 pl-0.5">
+                                            <span className="text-[10px] text-slate-400">{value.length} 字</span>
+                                            <span className="flex gap-3">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setValue(def)}
+                                                    className="text-[11px] font-semibold text-slate-500 hover:text-primary active:scale-95 transition-all"
+                                                >
+                                                    载入默认模板
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setValue('')}
+                                                    disabled={usingDefault}
+                                                    className="text-[11px] font-semibold text-rose-500 hover:text-rose-600 active:scale-95 transition-all disabled:opacity-30 disabled:pointer-events-none"
+                                                >
+                                                    清空（恢复默认）
+                                                </button>
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
 
                 <div className="group">

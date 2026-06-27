@@ -22,7 +22,7 @@ import { buildChatRequestPayload } from '../utils/chatRequestPayload';
 import { extractHtmlBlocks } from '../utils/htmlPrompt';
 import { loadMusicPlaybackSnapshot } from './MusicContext';
 import { setMinimaxRegion } from '../utils/minimaxEndpoint';
-import { setTtsProvider } from '../utils/ttsProvider';
+import { setTtsProvider, setVoicePromptOverrides } from '../utils/ttsProvider';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { formatBytes } from '../utils/format';
@@ -1409,6 +1409,10 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   useEffect(() => {
     setTtsProvider(apiConfig.ttsProvider);
   }, [apiConfig.ttsProvider]);
+  // 同步用户自定义语音表演指南（同上：chatPrompts 拿不到 apiConfig，靠单例读最新值）。
+  useEffect(() => {
+    setVoicePromptOverrides(apiConfig.voicePrompts);
+  }, [apiConfig.voicePrompts]);
   const userProfileRef = useRef(userProfile);
   userProfileRef.current = userProfile;
   const groupsRef = useRef(groups);
