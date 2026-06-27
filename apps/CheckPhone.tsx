@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
-import { CharacterProfile, PhoneEvidence, PhoneCustomApp, PhoneContact, AiSession, AiServiceKind, TavernCard } from '../types';
+import { CharacterProfile, PhoneEvidence, PhoneCustomApp, PhoneContact, ConvTopic, AiSession, AiServiceKind, TavernCard } from '../types';
 import { ContextBuilder } from '../utils/context';
 import Modal from '../components/os/Modal';
 import { safeResponseJson } from '../utils/safeApi';
@@ -9,6 +9,7 @@ import { injectMemoryPalace } from '../utils/memoryPalace/pipeline';
 import {
     runRealConversation, runNpcConversation, upsertContact, matchRealChar,
     clampAffinity, normName, flipTranscript, parseTranscript, serializeTurns, appendLearned,
+    topicText, summarizeConversation,
 } from '../utils/relationshipChat';
 import PersonaSim, { LifeLog, generatePersonaScript } from './PersonaSim';
 import { usePersonaSim, personaSimStore } from '../utils/personaSimStore';
@@ -276,6 +277,8 @@ const CheckPhone: React.FC = () => {
     const [affinityDraft, setAffinityDraft] = useState<number | null>(null);
     // 联系人「资料抽屉」（点头像/…打开）——备注、了解、好感、绑定、关系操作都收在这里，主界面只剩聊天
     const [showProfile, setShowProfile] = useState(false);
+    // 话题盒记忆：长按编辑/删除
+    const [topicEdit, setTopicEdit] = useState<{ contactId: string; topicId: string; text: string } | null>(null);
 
     // Custom App Creation State
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -1505,6 +1508,47 @@ ${olderText}
         updateCharacter(owner.id, (cur) => ({ phoneState: { ...cur.phoneState, contacts, records: nextRecs } }));
     };
 
+    // 聊满 100 条触发总结：把待归档的每 100 条原文，A/B 各自第一人称浓缩成一条话题盒记忆，推进水位线。
+    // 原文仍留在 record.detail（用户能看），只是不再进上下文。
+    const ARCHIVE_EVERY = 100;
+    const maybeArchiveConversation = async (aContact: PhoneContact, b: CharacterProfile, aFull: string) => {
+        if (!targetChar) return;
+        const aLines = parseTranscript(aFull);
+        const startMark = aContact.archivedThru ?? 0;
+        let mark = startMark;
+        const aTopics: ConvTopic[] = [];
+        const bTopics: ConvTopic[] = [];
+        while (aLines.length - mark >= ARCHIVE_EVERY) {
+            const aChunk = serializeTurns(aLines.slice(mark, mark + ARCHIVE_EVERY));
+            const bChunk = flipTranscript(aChunk);
+            const [aSum, bSum] = await Promise.all([
+                summarizeConversation({ api: apiConfig as any, speakerName: targetChar.name, otherName: b.name, transcript: aChunk }),
+                summarizeConversation({ api: apiConfig as any, speakerName: b.name, otherName: targetChar.name, transcript: bChunk }),
+            ]);
+            const ts = Date.now();
+            const mk = () => `tp-${ts}-${Math.random().toString(36).slice(2, 7)}`;
+            if (aSum) aTopics.push({ id: mk(), text: aSum, createdAt: ts, span: ARCHIVE_EVERY });
+            if (bSum) bTopics.push({ id: mk(), text: bSum, createdAt: ts, span: ARCHIVE_EVERY });
+            mark += ARCHIVE_EVERY;
+        }
+        if (mark === startMark) return; // 没满 100，不归档
+        updateCharacter(targetChar.id, (cur) => ({
+            phoneState: {
+                ...cur.phoneState, records: cur.phoneState?.records || [],
+                contacts: (cur.phoneState?.contacts || []).map(c => c.id === aContact.id
+                    ? { ...c, topicBox: [...(c.topicBox || []), ...aTopics], archivedThru: mark } : c),
+            },
+        }));
+        updateCharacter(b.id, (cur) => ({
+            phoneState: {
+                ...cur.phoneState, records: cur.phoneState?.records || [],
+                contacts: (cur.phoneState?.contacts || []).map(c => (c.linkedCharId === targetChar.id || normName(c.name) === normName(targetChar.name))
+                    ? { ...c, topicBox: [...(c.topicBox || []), ...bTopics], archivedThru: mark } : c),
+            },
+        }));
+        addToast(`已把更早的 ${mark} 条聊天归档成话题记忆`, 'info');
+    };
+
     // P1：真角色双向对话（A 发 B 回，双 LLM，镜像到 B）
     const handleRealConversation = async (contact: PhoneContact) => {
         if (!targetChar || !apiConfig.apiKey) { addToast('请先配置 API', 'error'); return; }
@@ -1514,19 +1558,30 @@ ${olderText}
         try {
             const existing = (targetChar.phoneState?.records || []).find(r => r.type === 'chat' && (r.contactId === contact.id || normName(r.title) === normName(contact.name)));
             const bToA = (b.phoneState?.contacts || []).find(c => c.linkedCharId === targetChar.id || normName(c.name) === normName(targetChar.name));
+            // 上下文压缩：归档过的原文(0~archivedThru)不再进上下文，只喂「话题盒总结 + 近段原文」。
+            const aAllLines = parseTranscript(existing?.detail || '');
+            const aArchived = Math.min(contact.archivedThru ?? 0, aAllLines.length);
+            const archivedALines = aAllLines.slice(0, aArchived);            // 留着给用户看的原文
+            const recentDetail = serializeTurns(aAllLines.slice(aArchived));  // 喂上下文的近段
             const result = await runRealConversation({
                 a: targetChar, b, user: userProfile, api: apiConfig as any,
                 affinityA: contact.affinity, affinityB: bToA?.affinity ?? 0,
-                existingDetail: existing?.detail,
+                existingDetail: recentDetail,
                 // bNote = A 对 B 的备注（喂给 A）；aNote = B 对 A 的备注（喂给 B）。别接反。
                 aNote: bToA?.note, bNote: contact.note,
                 bLearned: contact.learned, aLearned: bToA?.learned,
+                aSummary: topicText(contact.topicBox), bSummary: topicText(bToA?.topicBox),
             });
             if (!result.aDetail.trim()) { addToast('对方没有回应…', 'error'); return; }
+            // 把归档段拼回去，存「完整原文」给用户看（上下文用的是压缩版，互不影响）
+            const aFull = serializeTurns([...archivedALines, ...parseTranscript(result.aDetail)]);
+            const bFull = flipTranscript(aFull);
             // A 学到的写进 A 对 B 的了解；B 学到的写进 B 对 A 的了解。
             // 若对方通讯录里还没有自己，commitConversationSide 会先建好联系人（带名字+起始备注名）再挂消息。
-            await commitConversationSide(targetChar, contact.name, b.id, result.aDetail, result.aDelta, contact.note, result.aLearnedNew, contact.identity);
-            await commitConversationSide(b, targetChar.name, targetChar.id, result.bDetail, result.bDelta, bToA?.note, result.bLearnedNew, contact.identity);
+            await commitConversationSide(targetChar, contact.name, b.id, aFull, result.aDelta, contact.note, result.aLearnedNew, contact.identity);
+            await commitConversationSide(b, targetChar.name, targetChar.id, bFull, result.bDelta, bToA?.note, result.bLearnedNew, contact.identity);
+            // 聊满 100 条 → 各自第一人称总结归档进话题盒
+            await maybeArchiveConversation(contact, b, aFull);
             addToast(`${targetChar.name} 和 ${b.name} 聊了一会儿`, 'success');
         } catch (e) {
             console.error(e);
@@ -2536,6 +2591,26 @@ ${olderText}
                                 )}
                             </div>
 
+                            {/* 话题盒：聊满 100 条自动浓缩的第一人称聊天记忆（长按改/删）；原文仍在聊天里可看 */}
+                            {c.topicBox && c.topicBox.length > 0 && (
+                                <div className="rounded-2xl p-4 bg-white/[0.03] border border-white/[0.06]">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="text-[10px] tracking-[0.2em] uppercase text-white/40">话题盒 · 聊天记忆</span>
+                                        <span className="text-[9px] text-white/30">长按改/删</span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {c.topicBox.map(t => (
+                                            <div key={t.id} {...longPress(() => setTopicEdit({ contactId: c.id, topicId: t.id, text: t.text }))}
+                                                onClick={() => { if (lpFired.current) { lpFired.current = false; } }}
+                                                className="rounded-xl px-3 py-2 bg-white/[0.03] border border-white/[0.05] active:bg-white/[0.06] transition select-none cursor-pointer">
+                                                <p className="text-[11.5px] text-white/60 leading-relaxed whitespace-pre-wrap">{t.text}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <p className="text-[9.5px] text-white/25 mt-2">※ 每聊满 {ARCHIVE_EVERY} 条自动浓缩成一条第一人称记忆，进上下文；原文仍在聊天里可看</p>
+                                </div>
+                            )}
+
                             {/* 了解（印象，未必属实，自动累积） */}
                             <div className="rounded-2xl p-4 bg-white/[0.02] border border-white/[0.06] border-dashed">
                                 <div className="flex items-center justify-between mb-1.5">
@@ -3330,6 +3405,33 @@ ${olderText}
                                 })}
                             </div>
                         </div>
+                    </div>
+                )}
+            </Modal>
+
+            {/* 话题盒记忆 · 编辑/删除（长按某条记忆打开） */}
+            <Modal isOpen={!!topicEdit} title="聊天记忆" onClose={() => setTopicEdit(null)}
+                footer={topicEdit ? (
+                    <div className="flex gap-2">
+                        <button onClick={() => {
+                            const { contactId, topicId } = topicEdit;
+                            mutateContacts(cs => cs.map(c => c.id === contactId ? { ...c, topicBox: (c.topicBox || []).filter(t => t.id !== topicId) } : c));
+                            setTopicEdit(null);
+                            addToast('已删除该条记忆', 'success');
+                        }} className="px-4 py-3 bg-rose-500 text-white font-bold rounded-2xl">删除</button>
+                        <button onClick={() => {
+                            const { contactId, topicId, text } = topicEdit;
+                            mutateContacts(cs => cs.map(c => c.id === contactId ? { ...c, topicBox: (c.topicBox || []).map(t => t.id === topicId ? { ...t, text: text.trim() } : t) } : c));
+                            setTopicEdit(null);
+                            addToast('已保存', 'success');
+                        }} className="flex-1 py-3 bg-pink-500 text-white font-bold rounded-2xl">保存</button>
+                    </div>
+                ) : undefined}>
+                {topicEdit && (
+                    <div className="space-y-2">
+                        <p className="text-[11px] text-slate-400">这是角色第一人称、带主观色彩的一段聊天记忆（用作上下文）。可改写或删除。</p>
+                        <textarea value={topicEdit.text} onChange={e => setTopicEdit({ ...topicEdit, text: e.target.value })}
+                            className="w-full h-32 bg-slate-50 border border-slate-200 rounded-xl p-3 text-[13px] resize-none" />
                     </div>
                 )}
             </Modal>

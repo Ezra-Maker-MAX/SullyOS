@@ -614,6 +614,15 @@ export interface PhoneEvidence {
  * 角色（机主）通讯录里的一个人，可能是神经链接里真实存在的角色（real），
  * 也可能是纯按人设虚构的路人（npc）。
  */
+/** 聊天话题盒的一条总结记忆（某一侧第一人称、带主观色彩，由一段原文浓缩而来；可编辑/删除） */
+export interface ConvTopic {
+    id: string;
+    text: string;
+    createdAt: number;
+    /** 这条记忆浓缩了多少条原文（信息用） */
+    span?: number;
+}
+
 export interface PhoneContact {
     id: string;
     name: string;
@@ -627,6 +636,14 @@ export interface PhoneContact {
      * 与 note（事实）分开存、分开注入。
      */
     learned?: string;
+    /**
+     * 聊天话题盒：这一侧（第一人称、带主观色彩）对这段对话的**总结记忆**。
+     * 每聊满 100 条触发一次总结、追加一条；用作聊天上下文（原文从上下文里隐藏，但仍存 record.detail 供用户查看）。
+     * 可长按删除/修改。
+     */
+    topicBox?: ConvTopic[];
+    /** 已被总结归档的原文条数（水位线）：record.detail 里这之前的内容不再进上下文，只进话题盒 */
+    archivedThru?: number;
     avatar?: string;
     /** 真假甄别结果：real=神经链接里真有这人；npc=纯虚构 */
     kind: 'real' | 'npc';

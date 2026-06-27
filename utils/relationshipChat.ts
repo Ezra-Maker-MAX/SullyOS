@@ -2,7 +2,7 @@
 // 查手机「人际关系」模块的纯逻辑 + LLM 链路：真假甄别、好感、双 LLM 私下对话（A 发 B 回）、AI 玩 AI。
 // UI 层（CheckPhone.tsx）负责把这里的结果落库 / 镜像到对方角色，本文件只产数据，不碰 React。
 
-import { CharacterProfile, PhoneContact, UserProfile } from '../types';
+import { CharacterProfile, PhoneContact, UserProfile, ConvTopic } from '../types';
 import { ContextBuilder } from './context';
 import { injectMemoryPalace } from './memoryPalace/pipeline';
 import { DB } from './db';
@@ -57,6 +57,13 @@ export function appendLearned(prev: string | undefined, addition: string, maxLin
     if (!add) return lines.join('\n');
     if (!lines.some(l => l === add)) lines.push(add);
     return lines.slice(-maxLines).join('\n');
+}
+
+/** 把话题盒（多条总结记忆）拼成用作上下文的文本；空则返回空串。默认只取最近 maxItems 条，避免无限膨胀。 */
+export function topicText(box: ConvTopic[] | undefined, maxItems = 10): string {
+    const items = (box || []).filter(t => t.text && t.text.trim());
+    if (!items.length) return '';
+    return items.slice(-maxItems).map(t => `· ${t.text.trim()}`).join('\n');
 }
 
 /** 好感度钳制到 -100..100 */
@@ -229,6 +236,30 @@ async function lastUserInteractionTs(charId: string): Promise<number | undefined
     }
 }
 
+/**
+ * 把一段对话原文浓缩成「说话人第一人称、带主观色彩」的一段记忆（单次 LLM）。
+ * transcript 用该侧视角（"我:"=speaker，"对方:"=other）。失败/空则返回空串。
+ */
+export async function summarizeConversation(p: {
+    api: MiniApiConfig;
+    speakerName: string;
+    otherName: string;
+    transcript: string;
+}): Promise<string> {
+    if (!p.transcript.trim()) return '';
+    const prompt = `你是「${p.speakerName}」。下面是你和「${p.otherName}」的一段聊天记录（"我:"=你，"对方:"=${p.otherName}）：
+"""
+${p.transcript}
+"""
+请用**第一人称、带你自己的主观色彩**，把这段聊天浓缩成一段你自己的记忆/印象（3-5 句）：你们聊了什么、你当时的感受和判断、对 TA 的看法有没有变化。只输出这段记忆本身，别加「我:」之类前缀、别解释、别旁白。`;
+    try {
+        const out = await chatCompletion(p.api, prompt, 0.7);
+        return out.replace(/^[「"']|[」"']$/g, '').trim();
+    } catch {
+        return '';
+    }
+}
+
 export interface RealConversationResult {
     /** A 机主视角脚本（"我"=A，"对方"=B） */
     aDetail: string;
@@ -261,6 +292,10 @@ interface RunRealConversationParams {
     bLearned?: string;
     /** B 目前对 A 已有的「了解」 */
     aLearned?: string;
+    /** A 的聊天话题盒（第一人称记忆，替代被归档的原文进上下文） */
+    aSummary?: string;
+    /** B 的聊天话题盒 */
+    bSummary?: string;
 }
 
 /**
@@ -338,10 +373,15 @@ ${p.bNote}` : ''
 
 【你对「${b.name}」逐渐积累的了解 —— 这只是你凭相处得来的印象，**来源是 TA 自己说的，未必属实**，可作参考但别当铁证】：
 ${p.bLearned}` : ''
+        }${
+            p.aSummary ? `
+
+【你和「${b.name}」更早聊过的（你自己的记忆/印象，第一人称——原文较久远已归档，这是你记得的部分）：
+${p.aSummary}】` : ''
         }
 你对 TA 的当前好感度：${affinityA}（-100~100；>0 亲近、=0 普通、<0 才有反感）。
 
-已经发生的对话（"${a.name}:" 是你，"${b.name}:" 是对方）：
+${p.aSummary ? '最近的对话' : '已经发生的对话'}（"${a.name}:" 是你，"${b.name}:" 是对方）：
 """
 ${labeled() || '（还没开始，由你起头）'}
 """
@@ -392,10 +432,15 @@ ${p.aNote}` : ''
 
 【你对「${a.name}」逐渐积累的了解 —— 凭相处得来的印象，**来源是 TA 自己说的，未必属实**，可作参考别当铁证】：
 ${p.aLearned}` : ''
+        }${
+            p.bSummary ? `
+
+【你和「${a.name}」更早聊过的（你自己的记忆/印象，第一人称——原文较久远已归档，这是你记得的部分）：
+${p.bSummary}】` : ''
         }
 你对 TA 的当前好感度：${affinityB}（-100~100；>0 亲近、=0 普通、<0 才有反感）。
 
-对话记录（"${b.name}:" 是你，"${a.name}:" 是对方）：
+${p.bSummary ? '最近的对话' : '对话记录'}（"${b.name}:" 是你，"${a.name}:" 是对方）：
 """
 ${labeled()}
 """
