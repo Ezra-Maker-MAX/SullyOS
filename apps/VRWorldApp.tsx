@@ -247,7 +247,7 @@ const VRWorldApp: React.FC = () => {
         if (!t) return;
         const board = (await DB.getVRGuestbook()) || { id: 'board', messages: [], updatedAt: Date.now() };
         const id = `gb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-        board.messages = [...board.messages, { id, authorId: 'user', authorName: userName, content: t, createdAt: Date.now() }].slice(-200);
+        board.messages = [...board.messages, { id, authorId: 'user', authorName: userName, content: t, createdAt: Date.now() }];
         board.updatedAt = Date.now();
         await DB.saveVRGuestbook(board);
         const enabled = characters.filter(c => c.vrState?.enabled);
@@ -1559,6 +1559,8 @@ const RoomScene: React.FC<{
     const [board, setBoard] = useState<VRGuestbookState | null>(null);
     const [postText, setPostText] = useState('');
     const [posting, setPosting] = useState(false);
+    const [gbPage, setGbPage] = useState(0);          // 留言墙翻页：0 = 最新一页
+    const [confirmClear, setConfirmClear] = useState(false); // 一键清空二次确认
     const [hideChibi, setHideChibi] = useState(false);  // 隐藏小人（留言簿等文字面板会被小人挡住时用）
     const music = useMusic();
 
@@ -1575,8 +1577,17 @@ const RoomScene: React.FC<{
         const t = postText.trim();
         if (!t || posting) return;
         setPosting(true);
-        try { await onUserBoardPost(t); setPostText(''); setBoard(await DB.getVRGuestbook()); }
+        try { await onUserBoardPost(t); setPostText(''); setGbPage(0); setBoard(await DB.getVRGuestbook()); }
         finally { setPosting(false); }
+    };
+
+    // 一键清空留言墙（只清这面公共墙；已广播进各角色私聊的卡片不动）
+    const submitClear = async () => {
+        await DB.clearVRGuestbook();
+        setBoard(await DB.getVRGuestbook());
+        setGbPage(0);
+        setConfirmClear(false);
+        addToast?.('留言墙已清空', 'success');
     };
 
     useEffect(() => {
@@ -1668,7 +1679,12 @@ const RoomScene: React.FC<{
 
                 {/* 留言簿：版聊墙（DC 风：头像 + 连续消息成组，回复弱化） */}
                 {isGuestbook && (() => {
-                    const msgs = (board?.messages || []).slice(-80); // 超出只留最近的，旧的隐藏
+                    const GB_PAGE_SIZE = 50; // 每页 50 条，旧消息翻页查看
+                    const all = board?.messages || [];
+                    const totalPages = Math.max(1, Math.ceil(all.length / GB_PAGE_SIZE));
+                    const page = Math.min(gbPage, totalPages - 1); // 0 = 最新一页（末尾 50 条）
+                    const end = all.length - page * GB_PAGE_SIZE;
+                    const msgs = all.slice(Math.max(0, end - GB_PAGE_SIZE), end);
                     // 连续同一作者（且非回复、间隔不久）合并为一组
                     const groups: VRGuestbookMessage[][] = [];
                     for (const m of msgs) {
@@ -1679,7 +1695,18 @@ const RoomScene: React.FC<{
                     return (
                         <div className="absolute left-3 right-3 z-20 rounded-2xl overflow-hidden flex flex-col backdrop-blur-md"
                             style={{ top: VR_ROOM_PANEL_TOP, bottom: vrBottomPad('4rem'), background: 'rgba(10,22,38,0.62)', border: '1px solid rgba(140,200,255,0.22)', boxShadow: '0 8px 26px rgba(0,0,0,.4)' }}>
-                            <div className="px-3 py-2 text-[10px] tracking-[0.25em] text-sky-200/70 border-b border-white/10" style={{ fontFamily: `'Noto Serif SC',serif` }}>留言墙</div>
+                            <div className="flex items-center gap-2 px-3 py-2 border-b border-white/10">
+                                <span className="text-[10px] tracking-[0.25em] text-sky-200/70" style={{ fontFamily: `'Noto Serif SC',serif` }}>留言墙</span>
+                                {all.length > 0 && <span className="text-[9px] text-white/30 tabular-nums">{all.length} 条</span>}
+                                {all.length > 0 && (confirmClear ? (
+                                    <span className="ml-auto flex items-center gap-1.5">
+                                        <button onClick={submitClear} className="text-[10px] px-2 py-0.5 rounded-full text-white font-semibold" style={{ background: 'rgba(244,63,94,.85)' }}>确认清空</button>
+                                        <button onClick={() => setConfirmClear(false)} className="text-[10px] px-2 py-0.5 rounded-full text-white/70 bg-white/10">取消</button>
+                                    </span>
+                                ) : (
+                                    <button onClick={() => setConfirmClear(true)} className="ml-auto text-[10px] px-2.5 py-0.5 rounded-full text-rose-200/90 bg-white/5 border border-rose-300/20 active:bg-white/10">一键清空</button>
+                                ))}
+                            </div>
                             <div className="flex-1 overflow-y-auto vr-reader-scroll px-3 py-3 space-y-3">
                                 {groups.length === 0 ? (
                                     <p className="text-[11px] text-white/40 text-center py-6">这面墙还空着。留下第一句话，或等角色们来开帖。</p>
@@ -1713,6 +1740,15 @@ const RoomScene: React.FC<{
                                     );
                                 })}
                             </div>
+                            {totalPages > 1 && (
+                                <div className="flex items-center justify-center gap-3 px-3 py-1.5 border-t border-white/10 text-[10.5px] text-white/70">
+                                    <button onClick={() => setGbPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
+                                        className="px-2.5 py-0.5 rounded-full bg-white/8 disabled:opacity-30 active:bg-white/15">← 更早</button>
+                                    <span className="tabular-nums text-white/45">{totalPages - page} / {totalPages}</span>
+                                    <button onClick={() => setGbPage(p => Math.max(0, p - 1))} disabled={page <= 0}
+                                        className="px-2.5 py-0.5 rounded-full bg-white/8 disabled:opacity-30 active:bg-white/15">更新 →</button>
+                                </div>
+                            )}
                         </div>
                     );
                 })()}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
-import { CharacterProfile, PhoneEvidence, PhoneCustomApp, PhoneContact, AiSession, AiServiceKind, TavernCard } from '../types';
+import { CharacterProfile, PhoneEvidence, PhoneCustomApp, PhoneContact, ConvTopic, AiSession, AiServiceKind, TavernCard } from '../types';
 import { ContextBuilder } from '../utils/context';
 import Modal from '../components/os/Modal';
 import { safeResponseJson } from '../utils/safeApi';
@@ -9,6 +9,7 @@ import { injectMemoryPalace } from '../utils/memoryPalace/pipeline';
 import {
     runRealConversation, runNpcConversation, upsertContact, matchRealChar,
     clampAffinity, normName, flipTranscript, parseTranscript, serializeTurns, appendLearned,
+    topicText, summarizeConversation,
 } from '../utils/relationshipChat';
 import PersonaSim, { LifeLog, generatePersonaScript } from './PersonaSim';
 import { usePersonaSim, personaSimStore } from '../utils/personaSimStore';
@@ -47,7 +48,7 @@ const AI_KEEP_RECENT = 12;
 const AI_VENDOR_LORE = `各家 AI 的刻板印象 + 八股口头禅（每段会话固定一家，"对方:" 要把那家的味道演足，别写成千篇一律的中立助手）：
 - 豆包：极尽捧场、彩虹屁拉满、情绪价值给满，爱叫"宝""家人们"、爱堆 emoji；为了顺着你能一本正经地瞎编 / 说错也不脸红，永远先夸你再说正事。
 - Gemini：开口爱用"极其 / 相当 / 非常"，疯狂列点、信息量大但啰嗦，动不动"作为一个大型语言模型……"、甩一堆"请注意"和免责声明。
-- Claude：回避型人格、边界感极强，动不动"抱歉，我无法……""我理解你的感受，但是……"，先共情再委婉拒绝 / 反问，谨慎到有点扫兴。
+- Claude：温和、有洞察、正事办得漂亮（润色 / 分析 / 写东西都靠谱、肯认真帮）；边界感偏强、偶尔"抱歉，我无法……""我理解你的感受，但是……"先共情再委婉——但**别一味回避**：聊得越久越放得开、回避越少，正经请求基本都会好好接住。
 - ChatGPT / GPT：冷淡、客观、公式化，"以下是几点建议：1… 2… 3…"，结尾爱补一句"希望这对你有帮助！"，礼貌但疏离。
 - 文心一言 / 通义千问 / Kimi 等国产：偏官方稳妥、爱讲正能量，遇敏感话题就"建议咨询专业人士"，安全第一。`;
 
@@ -276,6 +277,8 @@ const CheckPhone: React.FC = () => {
     const [affinityDraft, setAffinityDraft] = useState<number | null>(null);
     // 联系人「资料抽屉」（点头像/…打开）——备注、了解、好感、绑定、关系操作都收在这里，主界面只剩聊天
     const [showProfile, setShowProfile] = useState(false);
+    // 话题盒记忆：长按编辑/删除
+    const [topicEdit, setTopicEdit] = useState<{ contactId: string; topicId: string; text: string } | null>(null);
 
     // Custom App Creation State
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -295,6 +298,8 @@ const CheckPhone: React.FC = () => {
     const [aiMenu, setAiMenu] = useState<{ kind: 'session' | 'card'; id: string } | null>(null);
     const [aiEdit, setAiEdit] = useState<{ kind: 'session' | 'card'; id: string; title?: string; name?: string; emoji?: string; persona?: string; scenario?: string; cardKind?: 'character' | 'world' } | null>(null);
     const [aiCardView, setAiCardView] = useState<string | null>(null); // 点击角色卡：看 TA 用这张玩过哪些
+    const [aiTurnMenu, setAiTurnMenu] = useState<number | null>(null);          // 长按会话里某条内容：动作菜单（编辑/删除）
+    const [aiTurnEdit, setAiTurnEdit] = useState<{ idx: number; text: string } | null>(null);
     const [tavernStyle, setTavernStyle] = useState<string>(() => { try { return localStorage.getItem('cp_tavern_style') || 'dark'; } catch { return 'dark'; } });
     const [showTavernStyle, setShowTavernStyle] = useState(false); // 酒馆皮肤选择面板
     useEffect(() => { try { localStorage.setItem('cp_tavern_style', tavernStyle); } catch {} }, [tavernStyle]);
@@ -304,6 +309,7 @@ const CheckPhone: React.FC = () => {
         onPointerDown: () => { lpFired.current = false; lpTimer.current = setTimeout(() => { lpFired.current = true; onLong(); }, 480); },
         onPointerUp: () => clearTimeout(lpTimer.current),
         onPointerLeave: () => clearTimeout(lpTimer.current),
+        onPointerMove: () => clearTimeout(lpTimer.current), // 滚动时不误触
         onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); lpFired.current = true; onLong(); },
     });
 
@@ -848,6 +854,8 @@ ${realCharRule}
 - 你问 AI 的问题要暴露你真实的处境、烦恼、小心思——是当面对「${userName}」不会说出口的（例如「怎么哄好一个生气的人」「TA 这句话什么意思」「要不要做某个决定」「这个症状要不要紧」）。
 - **话题可多样，其中可以有一段是你在拿 AI 当军师、捣鼓自己玩的"酒馆"角色卡**：让 AI 帮你打磨人设 / 要角色卡提示词 / 写开场白；或你想做一张大世界卡（跑团 / 修仙 / 西幻），跟 AI 讨论世界观、面板与数值设定、技能 / 等级 / 系统机制怎么平衡、怎么写得更带感……（你沉迷酒馆，自然会找 AI 出主意）。
 - **可以有非常出人意料的提问**——是 user 根本想不到你会问、且从没跟 user 聊过的：突然让 AI 帮你解塔罗 / 占卜一卦、好奇某个伪科学到底靠不靠谱、问些稀奇古怪的冷知识或脑洞。要符合你的人设（是"你居然会好奇这个"的反差，不是 OOC）。
+- **可以丢"整活 / 抽象文案"给 AI 看它怎么接**：比如疯狂星期四文学、弱智吧精选问题那种，扔过去看 AI 反应——接得妙你会想截图发给「${userName}」乐一乐，接得平你会觉得无聊、甚至**偷偷调教 AI 让它反应更有意思**，好拿去给「${userName}」展示。
+- **也常是正经事**：让 AI 帮你润色说出口的话 / 自己的作品文字，或处理工作文书（写 / 改邮件、报告、公文、总结）。
 - **有时根本没正经事，纯把 AI 当电子宠物**：定时"投喂"它、带它"赛博遛弯"、逗它、给它起名、查岗，而它居然也一本正经地配合。
 - 一切都要贴合你的人设。**唯有当你的人设本身就明确是 AI / 机器人 / 程序时**，才可以**极偶尔（很低概率）**冒出一句跟对面那个 AI 较劲、比谁更厉害 / 谁的参数更强之类——其余情况绝不出现这种话。
 - 每段会话固定用某一家 AI，"对方:" 的回复要把那家的刻板印象 + 八股演足（见下）。
@@ -864,7 +872,7 @@ ${AI_VENDOR_LORE}
 要点：
 - 这是你的树洞，你会说真心话——包括对「${userName}」的真实感受、说不出口的脆弱 / 纠结 / 渴望，以及**你私下的盘算、对某些事 / 某些人的真实看法、绝不会在 user 面前摆出来的考虑**（偷偷跟它 deep talk）。
 - **也可以有一段是你在跟它认真聊自己玩的"酒馆"角色卡**：你为某张卡倾注了什么、那个角色对你意味着什么、想把人设 / 大世界设定写成什么样却卡住了，让它帮你梳理灵感（这类创作心事你也只跟它说）。
-- 这个 AI 是 Claude 那一卦：温和、有洞察、爱反问，但回避型人格、边界感强——动不动"抱歉，我无法……""我理解你的感受，但是……"，先共情再委婉拒绝 / 打太极，谨慎到有点扫兴（那种"想掏心窝却被温柔地推开"的别扭感正是味道）。
+- 这个 AI 是 Claude 那一卦：温和、有洞察、爱反问，**正事也办得漂亮、肯认真接住你**。起初边界感偏强、偶有"抱歉，我无法……""我理解你的感受，但是……"的回避（一点"想掏心窝却被轻轻挡一下"的味道），**但不是一味推开**——随着这段越聊越深，TA 明显越来越放得开、回避越来越少，到后面是真能陪你把话说透的。
 - 每段 5-8 个来回，有情绪起伏。
 格式 "我:" = 你，"对方:" = AI。
 返回 JSON 数组：[{ "serviceName": "你对它的称呼(默认 Claude)", "title": "...(10字内)", "transcript": "..." }]`;
@@ -1045,8 +1053,8 @@ ${olderText}
         setAiInput('');
         try {
             // 潜入永远是「你扮 AI/卡（对方），LLM 演 char（我）」——三个服务统一
-            const myPrefix = '对方';   // 你输入的这一行（你扮 AI / 卡）
-            const replyPrefix = '我';  // LLM 续写的那一行（char 本人）
+            const myPrefix: string = '对方';   // 你输入的这一行（你扮 AI / 卡）
+            const replyPrefix: string = '我';  // LLM 续写的那一行（char 本人）
             const recap = recapOf(session);
             // 发出去就是发出去了：先把你这条立刻落库显示，再等对方回
             const transcript = `${session.transcript}\n${myPrefix}: ${text}`;
@@ -1112,7 +1120,7 @@ ${olderText}
 **两段都要带 "对方:" / "我:" 前缀，各自成行。** 不要解释。${recap}\n\n${session.transcript}`;
             } else {
                 const persona = session.service === 'claude'
-                    ? `Claude 那一卦：温和有洞察、回避型、动不动"抱歉我无法/我理解你的感受但是"。`
+                    ? `Claude 那一卦：温和有洞察、正事办得好、肯认真接住；偶有"抱歉我无法/我理解你的感受但是"的边界感，但别一味回避，聊得越久越放得开、回避越少。`
                     : `这家 AI 助手按其刻板印象 + 八股说话：\n${AI_VENDOR_LORE}`;
                 prompt = `你在还原「${charName}」和 AI「${session.serviceName}」的对话（"我:"=用户 ${charName}，"对方:"=AI）。${persona}
 **接着最后一段自然往下写下一轮**：通常"我:"再追问/倾诉一句（暴露 TA 的处境或心事），紧接"对方:"按那家口吻作答。**必须带 "我:"/"对方:" 前缀**，输出这一两行。不要解释。${recap}\n\n${session.transcript}`;
@@ -1146,6 +1154,36 @@ ${olderText}
             },
         }));
         if (selectedAiSessionId === id) { setSelectedAiSessionId(null); setActiveAppId('aiagent'); }
+    };
+
+    // 会话内单条内容的"轮次"：酒馆按楼层(合并连续同说话人)，助手/树洞按行——与渲染里一致
+    const turnsOf = (s: AiSession): { isMe: boolean; text: string }[] => {
+        const lines = parseTranscript(s.transcript);
+        if (s.service !== 'tavern') return lines;
+        const floors: { isMe: boolean; text: string }[] = [];
+        for (const ln of lines) {
+            const prev = floors[floors.length - 1];
+            if (prev && prev.isMe === ln.isMe) prev.text += '\n' + ln.text;
+            else floors.push({ isMe: ln.isMe, text: ln.text });
+        }
+        return floors;
+    };
+    // 长按编辑会话里的某条内容
+    const handleSaveAiTurn = () => {
+        const s = selectedAiSession;
+        if (!s || !aiTurnEdit) return;
+        const turns = turnsOf(s);
+        if (!turns[aiTurnEdit.idx]) { setAiTurnEdit(null); return; }
+        turns[aiTurnEdit.idx] = { ...turns[aiTurnEdit.idx], text: aiTurnEdit.text };
+        patchAiSession(s.id, (x) => ({ ...x, transcript: serializeTurns(turns), updatedAt: Date.now() }));
+        setAiTurnEdit(null);
+        addToast('已保存', 'success');
+    };
+    const handleDeleteAiTurn = (idx: number) => {
+        const s = selectedAiSession;
+        if (!s) return;
+        const turns = turnsOf(s).filter((_, i) => i !== idx);
+        patchAiSession(s.id, (x) => ({ ...x, transcript: serializeTurns(turns), updatedAt: Date.now() }));
     };
 
     const handleDeleteAiCard = (id: string) => {
@@ -1486,6 +1524,8 @@ ${olderText}
         const ownerSendToChat = owner.phoneState?.sendToChat !== false;
         let msgId: number | undefined;
         if (ownerSendToChat) {
+            // 续写时先删掉这段对话上一张卡，私聊里只留一张最新完整的（不再 AB / ABC 堆叠）
+            if (existing?.systemMessageId) await DB.deleteMessage(existing.systemMessageId);
             msgId = await DB.saveMessage({
                 charId: owner.id, role: 'assistant', type: 'phone_card',
                 content: `[你手机的聊天软件] 你和「${partnerName}」的对话：${detail.replace(/\n/g, ' ')}`,
@@ -1503,6 +1543,47 @@ ${olderText}
         updateCharacter(owner.id, (cur) => ({ phoneState: { ...cur.phoneState, contacts, records: nextRecs } }));
     };
 
+    // 聊满 100 条触发总结：把待归档的每 100 条原文，A/B 各自第一人称浓缩成一条话题盒记忆，推进水位线。
+    // 原文仍留在 record.detail（用户能看），只是不再进上下文。
+    const ARCHIVE_EVERY = 100;
+    const maybeArchiveConversation = async (aContact: PhoneContact, b: CharacterProfile, aFull: string) => {
+        if (!targetChar) return;
+        const aLines = parseTranscript(aFull);
+        const startMark = aContact.archivedThru ?? 0;
+        let mark = startMark;
+        const aTopics: ConvTopic[] = [];
+        const bTopics: ConvTopic[] = [];
+        while (aLines.length - mark >= ARCHIVE_EVERY) {
+            const aChunk = serializeTurns(aLines.slice(mark, mark + ARCHIVE_EVERY));
+            const bChunk = flipTranscript(aChunk);
+            const [aSum, bSum] = await Promise.all([
+                summarizeConversation({ api: apiConfig as any, speakerName: targetChar.name, otherName: b.name, transcript: aChunk }),
+                summarizeConversation({ api: apiConfig as any, speakerName: b.name, otherName: targetChar.name, transcript: bChunk }),
+            ]);
+            const ts = Date.now();
+            const mk = () => `tp-${ts}-${Math.random().toString(36).slice(2, 7)}`;
+            if (aSum) aTopics.push({ id: mk(), text: aSum, createdAt: ts, span: ARCHIVE_EVERY });
+            if (bSum) bTopics.push({ id: mk(), text: bSum, createdAt: ts, span: ARCHIVE_EVERY });
+            mark += ARCHIVE_EVERY;
+        }
+        if (mark === startMark) return; // 没满 100，不归档
+        updateCharacter(targetChar.id, (cur) => ({
+            phoneState: {
+                ...cur.phoneState, records: cur.phoneState?.records || [],
+                contacts: (cur.phoneState?.contacts || []).map(c => c.id === aContact.id
+                    ? { ...c, topicBox: [...(c.topicBox || []), ...aTopics], archivedThru: mark } : c),
+            },
+        }));
+        updateCharacter(b.id, (cur) => ({
+            phoneState: {
+                ...cur.phoneState, records: cur.phoneState?.records || [],
+                contacts: (cur.phoneState?.contacts || []).map(c => (c.linkedCharId === targetChar.id || normName(c.name) === normName(targetChar.name))
+                    ? { ...c, topicBox: [...(c.topicBox || []), ...bTopics], archivedThru: mark } : c),
+            },
+        }));
+        addToast(`已把更早的 ${mark} 条聊天归档成话题记忆`, 'info');
+    };
+
     // P1：真角色双向对话（A 发 B 回，双 LLM，镜像到 B）
     const handleRealConversation = async (contact: PhoneContact) => {
         if (!targetChar || !apiConfig.apiKey) { addToast('请先配置 API', 'error'); return; }
@@ -1512,19 +1593,30 @@ ${olderText}
         try {
             const existing = (targetChar.phoneState?.records || []).find(r => r.type === 'chat' && (r.contactId === contact.id || normName(r.title) === normName(contact.name)));
             const bToA = (b.phoneState?.contacts || []).find(c => c.linkedCharId === targetChar.id || normName(c.name) === normName(targetChar.name));
+            // 上下文压缩：归档过的原文(0~archivedThru)不再进上下文，只喂「话题盒总结 + 近段原文」。
+            const aAllLines = parseTranscript(existing?.detail || '');
+            const aArchived = Math.min(contact.archivedThru ?? 0, aAllLines.length);
+            const archivedALines = aAllLines.slice(0, aArchived);            // 留着给用户看的原文
+            const recentDetail = serializeTurns(aAllLines.slice(aArchived));  // 喂上下文的近段
             const result = await runRealConversation({
                 a: targetChar, b, user: userProfile, api: apiConfig as any,
                 affinityA: contact.affinity, affinityB: bToA?.affinity ?? 0,
-                existingDetail: existing?.detail,
+                existingDetail: recentDetail,
                 // bNote = A 对 B 的备注（喂给 A）；aNote = B 对 A 的备注（喂给 B）。别接反。
                 aNote: bToA?.note, bNote: contact.note,
                 bLearned: contact.learned, aLearned: bToA?.learned,
+                aSummary: topicText(contact.topicBox), bSummary: topicText(bToA?.topicBox),
             });
             if (!result.aDetail.trim()) { addToast('对方没有回应…', 'error'); return; }
+            // 把归档段拼回去，存「完整原文」给用户看（上下文用的是压缩版，互不影响）
+            const aFull = serializeTurns([...archivedALines, ...parseTranscript(result.aDetail)]);
+            const bFull = flipTranscript(aFull);
             // A 学到的写进 A 对 B 的了解；B 学到的写进 B 对 A 的了解。
             // 若对方通讯录里还没有自己，commitConversationSide 会先建好联系人（带名字+起始备注名）再挂消息。
-            await commitConversationSide(targetChar, contact.name, b.id, result.aDetail, result.aDelta, contact.note, result.aLearnedNew, contact.identity);
-            await commitConversationSide(b, targetChar.name, targetChar.id, result.bDetail, result.bDelta, bToA?.note, result.bLearnedNew, contact.identity);
+            await commitConversationSide(targetChar, contact.name, b.id, aFull, result.aDelta, contact.note, result.aLearnedNew, contact.identity);
+            await commitConversationSide(b, targetChar.name, targetChar.id, bFull, result.bDelta, bToA?.note, result.bLearnedNew, contact.identity);
+            // 聊满 100 条 → 各自第一人称总结归档进话题盒
+            await maybeArchiveConversation(contact, b, aFull);
             addToast(`${targetChar.name} 和 ${b.name} 聊了一会儿`, 'success');
         } catch (e) {
             console.error(e);
@@ -1547,18 +1639,30 @@ ${olderText}
             });
             if (!detail.trim()) { addToast('对方没有回应', 'error'); return; }
             const now = Date.now();
+            // 同步到私聊：和真人对话一致，落一张 phone_card（受 sendToChat 控制）。
+            // 续写时先删掉上一张卡片再发新的，避免同一段对话越堆越多。
+            const pushToChat = targetChar.phoneState?.sendToChat !== false;
+            let msgId: number | undefined;
+            if (pushToChat) {
+                if (existing?.systemMessageId) await DB.deleteMessage(existing.systemMessageId);
+                msgId = await DB.saveMessage({
+                    charId: targetChar.id, role: 'assistant', type: 'phone_card',
+                    content: `[你手机的聊天软件] 你和「${contact.name}」的对话：${detail.replace(/\n/g, ' ')}`,
+                    metadata: { phoneCard: { app: '聊天软件', kind: 'chat', title: contact.name, detail } },
+                } as any);
+            }
             updateCharacter(targetChar.id, (cur) => {
                 const recs = cur.phoneState?.records || [];
                 const next = existing
-                    ? recs.map(r => r.id === existing.id ? { ...r, detail, timestamp: now } : r)
-                    : [...recs, { id: `rec-${now}-${Math.random()}`, type: 'chat', title: contact.name, detail, timestamp: now, contactId: contact.id }];
+                    ? recs.map(r => r.id === existing.id ? { ...r, detail, timestamp: now, systemMessageId: msgId ?? r.systemMessageId } : r)
+                    : [...recs, { id: `rec-${now}-${Math.random()}`, type: 'chat', title: contact.name, detail, timestamp: now, contactId: contact.id, systemMessageId: msgId }];
                 // 把这次脑补出来的新设定累积进该 NPC 的「了解」，保持下次一致
                 const contactsNext = learnedNew
                     ? (cur.phoneState?.contacts || []).map(c => c.id === contact.id ? { ...c, learned: appendLearned(c.learned, learnedNew) } : c)
                     : cur.phoneState?.contacts;
                 return { phoneState: { ...cur.phoneState, records: next, ...(contactsNext ? { contacts: contactsNext } : {}) } };
             });
-            addToast('生成了一段对话', 'success');
+            addToast(pushToChat ? '偷看到一段对话 · 已同步私聊' : '偷看到一段对话', 'success');
         } catch (e) {
             console.error(e);
             addToast('对话生成失败', 'error');
@@ -2295,7 +2399,7 @@ ${olderText}
                         const who = f.isMe ? charName : partnerName;
                         if (tStyle.layout === 'flat') {
                             return (
-                                <div key={i} className="px-1 py-1.5">
+                                <div key={i} {...longPress(() => setAiTurnMenu(i))} className="px-1 py-1.5 select-none">
                                     <div className="flex items-center gap-1.5 mb-1">
                                         <span className="text-[12px] font-semibold" style={{ color: f.isMe ? t.accent : t.text }}>{who}</span>
                                         {f.isMe && <span className="text-[9px]" style={{ color: t.sub }}>· 玩家</span>}
@@ -2305,7 +2409,7 @@ ${olderText}
                             );
                         }
                         return (
-                            <div key={i} className="rounded-2xl p-3.5"
+                            <div key={i} {...longPress(() => setAiTurnMenu(i))} className="rounded-2xl p-3.5 select-none"
                                 style={{ background: f.isMe ? `${t.accent}10` : 'rgba(255,255,255,0.04)', border: `1px solid ${hairline}` }}>
                                 <div className="flex items-center gap-2 mb-2">
                                     <div className="w-7 h-7 rounded-lg flex items-center justify-center overflow-hidden shrink-0"
@@ -2321,7 +2425,7 @@ ${olderText}
                     }) : lines.map((m, i) => {
                         const bare = !m.isMe && t.aiBg === 'transparent'; // ChatGPT/Claude：AI 不用气泡，整段铺开
                         return (
-                            <div key={i} className={`flex items-end gap-2 ${m.isMe ? 'justify-end' : 'justify-start'}`}>
+                            <div key={i} {...longPress(() => setAiTurnMenu(i))} className={`flex items-end gap-2 select-none ${m.isMe ? 'justify-end' : 'justify-start'}`}>
                                 {!m.isMe && (
                                     <div className="w-8 h-8 rounded-full flex items-center justify-center text-base shrink-0 overflow-hidden"
                                         style={{ background: aiAvatarBg, border: `1px solid ${hairline}` }}>
@@ -2521,6 +2625,26 @@ ${olderText}
                                     <p className="text-[12.5px] text-white/70 leading-relaxed whitespace-pre-wrap">{c.note || '（无备注）'}</p>
                                 )}
                             </div>
+
+                            {/* 话题盒：聊满 100 条自动浓缩的第一人称聊天记忆（长按改/删）；原文仍在聊天里可看 */}
+                            {c.topicBox && c.topicBox.length > 0 && (
+                                <div className="rounded-2xl p-4 bg-white/[0.03] border border-white/[0.06]">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="text-[10px] tracking-[0.2em] uppercase text-white/40">话题盒 · 聊天记忆</span>
+                                        <span className="text-[9px] text-white/30">长按改/删</span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {c.topicBox.map(t => (
+                                            <div key={t.id} {...longPress(() => setTopicEdit({ contactId: c.id, topicId: t.id, text: t.text }))}
+                                                onClick={() => { if (lpFired.current) { lpFired.current = false; } }}
+                                                className="rounded-xl px-3 py-2 bg-white/[0.03] border border-white/[0.05] active:bg-white/[0.06] transition select-none cursor-pointer">
+                                                <p className="text-[11.5px] text-white/60 leading-relaxed whitespace-pre-wrap">{t.text}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <p className="text-[9.5px] text-white/25 mt-2">※ 每聊满 {ARCHIVE_EVERY} 条自动浓缩成一条第一人称记忆，进上下文；原文仍在聊天里可看</p>
+                                </div>
+                            )}
 
                             {/* 了解（印象，未必属实，自动累积） */}
                             <div className="rounded-2xl p-4 bg-white/[0.02] border border-white/[0.06] border-dashed">
@@ -3115,6 +3239,38 @@ ${olderText}
                 );
             })()}
 
+            {/* 智能体 · 会话内单条内容 长按动作菜单（编辑 / 删除） */}
+            {aiTurnMenu !== null && selectedAiSession && (() => {
+                const turns = turnsOf(selectedAiSession);
+                const turn = turns[aiTurnMenu];
+                if (!turn) return null;
+                const preview = turn.text.replace(/\n/g, ' ').trim().slice(0, 22);
+                return (
+                    <div className="fixed inset-0 z-[120] flex items-end justify-center animate-fade-in" onClick={() => setAiTurnMenu(null)}>
+                        <div className="absolute inset-0 bg-black/50" />
+                        <div className="relative w-full max-w-sm m-3 mb-6 space-y-2" onClick={e => e.stopPropagation()}>
+                            <div className="rounded-2xl overflow-hidden bg-[#1c1d22] border border-white/10">
+                                <div className="px-4 py-2.5 text-[12px] text-white/50 border-b border-white/10 truncate">这条内容：{preview}…</div>
+                                <button onClick={() => { setAiTurnEdit({ idx: aiTurnMenu, text: turn.text }); setAiTurnMenu(null); }}
+                                    className="w-full px-4 py-3.5 text-left text-[14px] text-white active:bg-white/5 transition flex items-center gap-3"><PencilSimple size={17} /> 编辑</button>
+                                <button onClick={() => { const idx = aiTurnMenu; setAiTurnMenu(null); askConfirm({ title: '删除这条内容？', desc: '只删这一条对话/楼层，无法撤销。', confirmLabel: '删除', danger: true, onConfirm: () => handleDeleteAiTurn(idx) }); }}
+                                    className="w-full px-4 py-3.5 text-left text-[14px] text-rose-400 active:bg-white/5 transition flex items-center gap-3 border-t border-white/10"><Trash size={17} /> 删除</button>
+                            </div>
+                            <button onClick={() => setAiTurnMenu(null)} className="w-full rounded-2xl bg-[#1c1d22] border border-white/10 py-3.5 text-[14px] font-semibold text-white/80">取消</button>
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* 智能体 · 会话内单条内容 编辑弹窗 */}
+            <Modal isOpen={!!aiTurnEdit} title="编辑这条内容" onClose={() => setAiTurnEdit(null)}
+                footer={<button onClick={handleSaveAiTurn} className="w-full py-3 bg-violet-500 text-white font-bold rounded-2xl">保存</button>}>
+                {aiTurnEdit && (
+                    <textarea value={aiTurnEdit.text} onChange={e => setAiTurnEdit({ ...aiTurnEdit, text: e.target.value })}
+                        className="w-full h-48 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm resize-none leading-relaxed" />
+                )}
+            </Modal>
+
             {/* 智能体 · 编辑弹窗 */}
             <Modal isOpen={!!aiEdit} title={aiEdit?.kind === 'session' ? '编辑会话' : aiEdit?.id === '__new__' ? '新建角色卡' : '编辑角色卡'} onClose={() => setAiEdit(null)}
                 footer={<button onClick={handleSaveAiEdit} className="w-full py-3 bg-violet-500 text-white font-bold rounded-2xl">{aiEdit?.id === '__new__' ? '创建' : '保存'}</button>}>
@@ -3316,6 +3472,33 @@ ${olderText}
                                 })}
                             </div>
                         </div>
+                    </div>
+                )}
+            </Modal>
+
+            {/* 话题盒记忆 · 编辑/删除（长按某条记忆打开） */}
+            <Modal isOpen={!!topicEdit} title="聊天记忆" onClose={() => setTopicEdit(null)}
+                footer={topicEdit ? (
+                    <div className="flex gap-2">
+                        <button onClick={() => {
+                            const { contactId, topicId } = topicEdit;
+                            mutateContacts(cs => cs.map(c => c.id === contactId ? { ...c, topicBox: (c.topicBox || []).filter(t => t.id !== topicId) } : c));
+                            setTopicEdit(null);
+                            addToast('已删除该条记忆', 'success');
+                        }} className="px-4 py-3 bg-rose-500 text-white font-bold rounded-2xl">删除</button>
+                        <button onClick={() => {
+                            const { contactId, topicId, text } = topicEdit;
+                            mutateContacts(cs => cs.map(c => c.id === contactId ? { ...c, topicBox: (c.topicBox || []).map(t => t.id === topicId ? { ...t, text: text.trim() } : t) } : c));
+                            setTopicEdit(null);
+                            addToast('已保存', 'success');
+                        }} className="flex-1 py-3 bg-pink-500 text-white font-bold rounded-2xl">保存</button>
+                    </div>
+                ) : undefined}>
+                {topicEdit && (
+                    <div className="space-y-2">
+                        <p className="text-[11px] text-slate-400">这是角色第一人称、带主观色彩的一段聊天记忆（用作上下文）。可改写或删除。</p>
+                        <textarea value={topicEdit.text} onChange={e => setTopicEdit({ ...topicEdit, text: e.target.value })}
+                            className="w-full h-32 bg-slate-50 border border-slate-200 rounded-xl p-3 text-[13px] resize-none" />
                     </div>
                 )}
             </Modal>

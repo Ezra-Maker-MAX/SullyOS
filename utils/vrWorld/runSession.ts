@@ -423,7 +423,7 @@ export async function runVRSession(deps: VRSessionDeps): Promise<VRSessionResult
             if (newMsgs.length > 0) {
                 await withSharedRoomLock(async () => {
                     const fresh = (await DB.getVRGuestbook()) || { id: 'board', messages: [], updatedAt: Date.now() };
-                    fresh.messages = [...fresh.messages, ...newMsgs].slice(-200);
+                    fresh.messages = [...fresh.messages, ...newMsgs];
                     fresh.updatedAt = Date.now();
                     await DB.saveVRGuestbook(fresh);
                 });

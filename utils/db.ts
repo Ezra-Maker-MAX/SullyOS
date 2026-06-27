@@ -1746,9 +1746,16 @@ export const DB = {
   saveVRGuestbook: async (state: VRGuestbookState): Promise<void> => {
       const db = await openDB();
       const transaction = db.transaction(STORE_VR_GUESTBOOK, 'readwrite');
-      // 只保留最近 200 条
-      const messages = (state.messages || []).slice(-200);
+      // 不限存储条数：留言墙已支持每 50 条翻页，旧留言全部保留可翻看
+      const messages = state.messages || [];
       transaction.objectStore(STORE_VR_GUESTBOOK).put({ ...state, id: 'board', messages });
+  },
+
+  clearVRGuestbook: async (): Promise<void> => {
+      const db = await openDB();
+      if (!db.objectStoreNames.contains(STORE_VR_GUESTBOOK)) return;
+      const transaction = db.transaction(STORE_VR_GUESTBOOK, 'readwrite');
+      transaction.objectStore(STORE_VR_GUESTBOOK).put({ id: 'board', messages: [], updatedAt: Date.now() });
   },
 
   // --- 剧院·投稿剧本库 ---

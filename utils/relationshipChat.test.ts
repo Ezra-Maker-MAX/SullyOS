@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normName, matchRealChar, clampAffinity, upsertContact, flipTranscript, parseTranscript, serializeTurns, appendLearned } from './relationshipChat';
+import { normName, matchRealChar, clampAffinity, upsertContact, flipTranscript, parseTranscript, serializeTurns, appendLearned, topicText } from './relationshipChat';
 import type { PhoneContact } from '../types';
 
 describe('relationshipChat · 纯函数', () => {
@@ -89,6 +89,21 @@ describe('relationshipChat · 纯函数', () => {
         expect(r).toHaveLength(8);
         expect(r[r.length - 1]).toBe('新事');
         expect(r[0]).toBe('事3'); // 最早的事0~事2 被挤掉
+    });
+
+    it('topicText 拼接/过滤空/限最近 N 条', () => {
+        expect(topicText(undefined)).toBe('');
+        expect(topicText([])).toBe('');
+        const box = [
+            { id: '1', text: '聊了借钱', createdAt: 1 },
+            { id: '2', text: '  ', createdAt: 2 },     // 空白过滤
+            { id: '3', text: '和好了', createdAt: 3 },
+        ];
+        expect(topicText(box)).toBe('· 聊了借钱\n· 和好了');
+        // 只取最近 N 条
+        const many = Array.from({ length: 12 }, (_, i) => ({ id: `${i}`, text: `t${i}`, createdAt: i }));
+        const out = topicText(many, 3).split('\n');
+        expect(out).toEqual(['· t9', '· t10', '· t11']);
     });
 
     it('upsertContact 不用 undefined 抹掉已有字段，且保留已有非空备注', () => {
