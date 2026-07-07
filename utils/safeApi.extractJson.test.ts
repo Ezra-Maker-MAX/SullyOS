@@ -31,6 +31,21 @@ describe('extractJson – Claude quiz JSON recovery', () => {
         expect(j.questions.length).toBe(2);
     });
 
+    it('recovers a diary reply with unescaped inner quotes (交换日记 REPLY)', () => {
+        // Mirrors JournalApp's char reply shape { text, paperStyle, stickers }.
+        // Claude leaves the inner 「"还不够好"」 quotes unescaped → naked JSON.parse dies and
+        // the old catch dumped the whole raw object into the diary body.
+        const bad = `{
+  "text": "普通的一天，我今天想了想那句 "还不够好"，其实挺释怀的。",
+  "paperStyle": "plain",
+  "stickers": []
+}`;
+        const j = extractJson(bad);
+        expect(j).not.toBeNull();
+        expect(typeof j.text).toBe('string');
+        expect(j.text).toContain('还不够好');
+    });
+
     it('strips code fences and drops trailing commas', () => {
         const bad = '```json\n{ "questions": [ { "type": "true_false", "answer": "true", }, ], }\n```';
         const j = extractJson(bad);

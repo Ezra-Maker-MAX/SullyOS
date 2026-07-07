@@ -6,7 +6,7 @@ import { CharacterProfile, DiaryEntry, StickerData, DiaryPage, MemoryFragment } 
 import { ContextBuilder } from '../utils/context';
 import { processImage } from '../utils/file';
 import Modal from '../components/os/Modal';
-import { safeResponseJson } from '../utils/safeApi';
+import { safeResponseJson, extractJson } from '../utils/safeApi';
 import { normalizeMessageContent } from '../utils/messageFormat';
 import { injectMemoryPalace, ingestDiaryToPalace, type DiaryIngestResult } from '../utils/memoryPalace/pipeline';
 import { getRoomLabel } from '../utils/memoryPalace/types';
@@ -34,6 +34,23 @@ const DEFAULT_STICKERS = [
     twemojiUrl('1f3b5'), twemojiUrl('1f33f'), twemojiUrl('1f353'), twemojiUrl('1f9f8'), twemojiUrl('1f388'),
     twemojiUrl('1f48c'), twemojiUrl('1f4a4'), twemojiUrl('1f97a'), twemojiUrl('1f621'), twemojiUrl('1f62d'),
 ];
+
+// 兜底：extractJson 都救不回来时，内容可能是「模型没按 JSON 写的散文」，也可能是
+// 「破损到修不了的 JSON」。前者直接当正文用；后者不能把 { "text": "..." } 整段露出来。
+// 这里做最后一层打捞：若内容像个带 text 字段的 JSON 对象，正则抠出 text 值并还原转义；
+// 否则原样返回。
+const salvageDiaryText = (raw: string): string => {
+    const s = (raw || '').trim();
+    if (!s.startsWith('{') || !/"text"\s*:/.test(s)) return s;
+    const m = s.match(/"text"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    if (!m) return s;
+    try {
+        // 用 JSON.parse 还原 \n \" \\ 等转义，失败就手动替换常见转义
+        return JSON.parse(`"${m[1]}"`);
+    } catch {
+        return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    }
+};
 
 // HELPER: Get local date string YYYY-MM-DD
 const getLocalDateStr = () => {
@@ -444,9 +461,11 @@ ${customStickerContext}
 如果要使用 Custom Sticker，请将 URL 直接放入返回的 stickers 数组中。
 
 ### 输出格式 (必须是纯 JSON)
+- 只输出这个 JSON 对象本身，前后不要有任何多余文字。
+- text 是一个 JSON 字符串：内部的换行必须写成 \\n，引号必须写成 \\"，反斜杠必须写成 \\\\。**绝对不要**在字符串里直接放真实换行或未转义的引号，否则会解析失败。
 Structure:
 {
-  "text": "日记正文...",
+  "text": "日记正文第一段\\n\\n第二段...",
   "paperStyle": "one of: ${styleOptions}",
   "stickers": ["sticker1", "http://custom-sticker-url..."] (从默认列表或 Custom Stickers 中选0-3个)
 }`;
@@ -469,11 +488,14 @@ Structure:
             let content = data.choices[0].message.content.trim();
             content = content.replace(/```json/g, '').replace(/```/g, '').trim();
             
-            let parsed;
-            try {
-                parsed = JSON.parse(content);
-            } catch (e) {
-                parsed = { text: content, paperStyle: 'plain', stickers: [] };
+            // Claude 常返回未转义特殊字符（引号 / 反斜杠 / 换行）的 JSON，裸 JSON.parse 会炸。
+            // 旧代码一炸就把整段原始 JSON（{ "text": ... } 带字面量 \n）直接塞进日记正文，
+            // 这就是「交换日记掉格式」的现象。先走 extractJson 的多层容错；连它都解析不出来
+            // （模型压根没按 JSON 写、直接写了散文）才把内容当纯文本兜底，兜底时再剥一层
+            // 可能残留的 JSON 外壳，保证任何情况下都不会把 { "text": ... } 露给用户。
+            let parsed: any = extractJson(content);
+            if (!parsed || typeof parsed.text !== 'string') {
+                parsed = { text: salvageDiaryText(content), paperStyle: 'plain', stickers: [] };
             }
 
             const charStickers: StickerData[] = (parsed.stickers || []).map((s: string) => ({
